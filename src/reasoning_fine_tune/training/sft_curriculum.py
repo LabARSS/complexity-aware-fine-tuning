@@ -78,7 +78,7 @@ def train_sft_curriculum(
     mid_output_dir = base_output_dir.joinpath("mid")
     hard_output_dir = base_output_dir.joinpath("hard")
 
-    training_args_easy = TrainingArguments(
+    training_args = TrainingArguments(
         seed=42,
         output_dir=str(easy_output_dir),
         num_train_epochs=5,
@@ -90,40 +90,29 @@ def train_sft_curriculum(
         eval_strategy="epoch",
         report_to="none",
         save_strategy="epoch",
+        lr_scheduler_type="constant",
         overwrite_output_dir=True,
         save_total_limit=1,
         save_only_model=True,
     )
-    trainer_easy = Trainer(
+    trainer = Trainer(
         model=model,
-        args=training_args_easy,
+        args=training_args,
         train_dataset=easy_train_ds,
         eval_dataset=test_ds,
         data_collator=data_collator,
         compute_metrics=compute_metrics,
     )
-    trainer_easy.train()
+    trainer.train()
 
-    training_args_mid = training_args_easy.update({"output_dir": mid_output_dir})
-    trainer_mid = Trainer(
-        model=trainer_easy.model,
-        args=training_args_mid,
-        train_dataset=mid_train_ds,
-        eval_dataset=test_ds,
-        data_collator=data_collator,
-        compute_metrics=compute_metrics,
-    )
-    trainer_mid.train()
+    training_args.output_dir = str(mid_output_dir)
+    trainer.train_dataset = mid_train_ds
 
-    training_args_hard = training_args_easy.update({"output_dir": hard_output_dir})
-    trainer_hard = Trainer(
-        model=trainer_mid.model,
-        args=training_args_hard,
-        train_dataset=hard_train_ds,
-        eval_dataset=test_ds,
-        data_collator=data_collator,
-        compute_metrics=compute_metrics,
-    )
-    trainer_hard.train()
+    trainer.train()
 
-    return trainer_hard.model
+    training_args.output_dir = str(hard_output_dir)
+    trainer.train_dataset = hard_train_ds
+
+    trainer.train()
+
+    return trainer.model
