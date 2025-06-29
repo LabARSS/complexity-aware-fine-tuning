@@ -4,12 +4,14 @@ from pathlib import Path
 import pandas as pd
 import torch
 from sklearn.metrics import accuracy_score, precision_recall_fscore_support
-from transformers.data.data_collator import DataCollatorForSeq2Seq
+from transformers.data.data_collator import DataCollatorForLanguageModeling
 from transformers.trainer import Trainer
 from transformers.training_args import TrainingArguments
 
 import reasoning_fine_tune.prompts.mmlu_single_token_answer as prompts
 from reasoning_fine_tune.utils.prepare_dataset_for_training import prepare_dataset_for_training
+
+BATCH_SIZE = 4
 
 
 def compute_metrics(eval_pred):
@@ -91,8 +93,7 @@ def train_sft_curriculum(
     )
 
     print(easy_train_ds[0])
-
-    data_collator = DataCollatorForSeq2Seq(tokenizer=tokenizer, padding=True)
+    data_collator = DataCollatorForLanguageModeling(tokenizer=tokenizer, mlm=False)
 
     base_output_dir = Path(__file__).parent.joinpath("../../../artifacts/sft_curriculum").joinpath(name)
 
@@ -104,8 +105,8 @@ def train_sft_curriculum(
         seed=42,
         output_dir=str(easy_output_dir),
         num_train_epochs=5,
-        per_device_train_batch_size=128,
-        per_device_eval_batch_size=128,
+        per_device_train_batch_size=BATCH_SIZE,
+        per_device_eval_batch_size=BATCH_SIZE,
         bf16=True,
         bf16_full_eval=True,
         logging_strategy="epoch",
