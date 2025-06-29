@@ -90,6 +90,8 @@ def train_sft_curriculum(
         tokenizer=tokenizer, get_sys_prompt=get_sys_prompt, get_user_prompt=get_user_prompt, df=test_df
     )
 
+    print(easy_train_ds[0])
+
     data_collator = DataCollatorForSeq2Seq(tokenizer=tokenizer, padding=True)
 
     base_output_dir = Path(__file__).parent.joinpath("../../../artifacts/sft_curriculum").joinpath(name)
