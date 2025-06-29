@@ -44,8 +44,6 @@ def train_sft_curriculum(
     def compute_metrics(eval_pred):
         predictions, labels = eval_pred
 
-        total = labels.shape[0]
-
         mask = (labels != -100) & (labels != tokenizer.eos_token_id)
         correct = (predictions == labels) & mask
 
