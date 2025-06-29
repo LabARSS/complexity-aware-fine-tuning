@@ -57,6 +57,26 @@ def train_sft_curriculum(
         header=0,
     )
 
+    # Join splits with the original MMLU df as the splits seem to have weird escape chars
+    # TODO: Re-do splits!!!
+    mmlu_df = pd.read_csv(
+        Path(__file__).parent.joinpath("../../../data/source/mmlu_pro_stem.tsv"),
+        sep="\t",
+        header=0,
+    )
+    easy_train_df = pd.merge(mmlu_df, easy_train_df["question_id"], on="question_id", how="inner")
+    mid_train_df = pd.merge(mmlu_df, mid_train_df["question_id"], on="question_id", how="inner")
+    hard_train_df = pd.merge(mmlu_df, hard_train_df["question_id"], on="question_id", how="inner")
+    test_df = pd.merge(mmlu_df, test_df["question_id"], on="question_id", how="inner")
+
+    print(easy_train_df.head())
+    print(mid_train_df.head())
+    print(hard_train_df.head())
+    print(test_df.head())
+    print(
+        f"Distribution of data (easy:mid:hard:test) = {len(easy_train_df)}:{len(mid_train_df)}:{len(hard_train_df)}:{len(test_df)}"
+    )
+
     easy_train_ds = prepare_dataset_for_training(
         tokenizer=tokenizer, get_sys_prompt=get_sys_prompt, get_user_prompt=get_user_prompt, df=easy_train_df
     )
