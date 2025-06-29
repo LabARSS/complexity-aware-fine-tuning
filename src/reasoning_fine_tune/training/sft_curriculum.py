@@ -2,7 +2,6 @@ import ast
 from pathlib import Path
 
 import pandas as pd
-import torch
 from transformers.data.data_collator import DataCollatorForSeq2Seq
 from transformers.trainer import Trainer
 from transformers.trainer_callback import TrainerState
@@ -13,12 +12,13 @@ from reasoning_fine_tune.utils.prepare_dataset_for_training import prepare_datas
 
 BATCH_SIZE = 8
 
+
 class ArgmaxTrainer(Trainer):
     def prediction_step(self, model, inputs, prediction_loss_only, ignore_keys=None):
         loss, logits, labels = super().prediction_step(
             model,
             inputs,
-            prediction_loss_only=False,      # we need logits once
+            prediction_loss_only=False,  # we need logits once
             ignore_keys=ignore_keys,
         )
         if logits is not None:
@@ -51,7 +51,7 @@ def train_sft_curriculum(
 
         accuracy = correct.sum() / mask.sum()
 
-        return {"accuracy": accuracy }
+        return {"accuracy": accuracy}
 
     easy_train_df = pd.read_csv(
         easy_train_df_path,
@@ -110,7 +110,7 @@ def train_sft_curriculum(
     print(easy_train_ds[0])
 
     tokenizer.pad_token = tokenizer.eos_token
-    data_collator = DataCollatorForSeq2Seq(tokenizer=tokenizer, padding=True, pad_to_multiple_of=8, return_tensors='pt')
+    data_collator = DataCollatorForSeq2Seq(tokenizer=tokenizer, padding=True, pad_to_multiple_of=8, return_tensors="pt")
 
     base_output_dir = Path(__file__).parent.joinpath("../../../artifacts/sft_curriculum").joinpath(name)
 
@@ -133,7 +133,7 @@ def train_sft_curriculum(
         overwrite_output_dir=True,
         save_total_limit=1,
         save_only_model=True,
-        eval_on_start=True
+        eval_on_start=True,
     )
     trainer = ArgmaxTrainer(
         model=model,

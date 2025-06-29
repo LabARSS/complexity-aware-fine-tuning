@@ -1,4 +1,3 @@
-import torch
 from datasets import Dataset
 
 
@@ -19,7 +18,7 @@ def prepare_dataset_for_training(tokenizer, get_sys_prompt, get_user_prompt, df)
 
         answer_id = tokenizer.encode(str(row["answer_index"] + 1), add_special_tokens=False)[0]
 
-        input_ids      = tokenized["input_ids"] + [answer_id]
+        input_ids = tokenized["input_ids"] + [answer_id]
         attention_mask = tokenized["attention_mask"] + [1]
 
         labels = [-100] * len(input_ids)
