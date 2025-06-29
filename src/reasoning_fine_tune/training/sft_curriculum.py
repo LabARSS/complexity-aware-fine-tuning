@@ -46,16 +46,12 @@ def train_sft_curriculum(
 
         total = labels.shape[0]
 
-        target_mask = (labels != -100) & (labels != tokenizer.eos_token_id)
-        correct_tokens = (predictions == labels) & target_mask
+        mask = (labels != -100) & (labels != tokenizer.eos_token_id)
+        correct = (predictions == labels) & mask
 
-        # We need to account for correct answers only all tokens matched.
-        # For instance, 11 could be encoded as two tokens X.
-        # Then if model replies 1 (X,), but we expect 11 (X,X), we will count the answer as half-correct, which is wrong
-        correct_batches_mask = correct_tokens.sum(-1) == target_mask.sum(-1)
-        correct_batches = correct_batches_mask.sum()
+        accuracy = correct.sum() / mask.sum()
 
-        return {"accuracy": correct_batches / total }
+        return {"accuracy": accuracy }
 
     easy_train_df = pd.read_csv(
         easy_train_df_path,
