@@ -28,6 +28,6 @@ def prepare_dataset_for_training(tokenizer, get_sys_prompt, get_user_prompt, df)
         process_row,
         num_proc=4,
     )
-    processed_ds.set_format(type="torch", columns=["input_ids", "label"])
+    processed_ds.set_format(type="torch", columns=["input_ids", "attention_mask", "labels"])
 
     return processed_ds

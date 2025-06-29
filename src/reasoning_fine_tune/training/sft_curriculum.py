@@ -4,7 +4,7 @@ from pathlib import Path
 import pandas as pd
 import torch
 from sklearn.metrics import accuracy_score, precision_recall_fscore_support
-from transformers.data.data_collator import DataCollatorForLanguageModeling
+from transformers.data.data_collator import DataCollatorForSeq2Seq
 from transformers.trainer import Trainer
 from transformers.training_args import TrainingArguments
 
@@ -93,7 +93,7 @@ def train_sft_curriculum(
     )
 
     print(easy_train_ds[0])
-    data_collator = DataCollatorForLanguageModeling(tokenizer=tokenizer, mlm=False)
+    data_collator = DataCollatorForSeq2Seq(tokenizer=tokenizer, padding=True)
 
     base_output_dir = Path(__file__).parent.joinpath("../../../artifacts/sft_curriculum").joinpath(name)
 
