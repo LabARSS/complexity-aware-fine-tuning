@@ -6,6 +6,7 @@ import torch
 from sklearn.metrics import accuracy_score, precision_recall_fscore_support
 from transformers.data.data_collator import DataCollatorForSeq2Seq
 from transformers.trainer import Trainer
+from transformers.trainer_callback import TrainerState
 from transformers.training_args import TrainingArguments
 
 import reasoning_fine_tune.prompts.mmlu_single_token_answer as prompts
@@ -113,7 +114,6 @@ def train_sft_curriculum(
         eval_strategy="epoch",
         report_to="none",
         save_strategy="epoch",
-        lr_scheduler_type="constant",
         overwrite_output_dir=True,
         save_total_limit=1,
         save_only_model=True,
@@ -130,11 +130,13 @@ def train_sft_curriculum(
 
     training_args.output_dir = str(mid_output_dir)
     trainer.train_dataset = mid_train_ds
+    trainer.state = TrainerState()
 
     trainer.train()
 
     training_args.output_dir = str(hard_output_dir)
     trainer.train_dataset = hard_train_ds
+    trainer.state = TrainerState()
 
     trainer.train()
 
