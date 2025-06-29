@@ -21,8 +21,7 @@ def prepare_dataset_for_training(tokenizer, get_sys_prompt, get_user_prompt, df)
         input_ids = tokenized["input_ids"] + [answer_id]
         attention_mask = tokenized["attention_mask"] + [1]
 
-        labels = [-100] * len(input_ids)
-        labels[-1] = answer_id
+        labels = [-100] * len(tokenized["input_ids"]) + [answer_id]
 
         return {"input_ids": input_ids, "attention_mask": attention_mask, "labels": labels}
 

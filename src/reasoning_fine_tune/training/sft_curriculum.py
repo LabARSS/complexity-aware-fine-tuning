@@ -12,19 +12,8 @@ from reasoning_fine_tune.utils.prepare_dataset_for_training import prepare_datas
 
 BATCH_SIZE = 8
 
-
-class ArgmaxTrainer(Trainer):
-    def prediction_step(self, model, inputs, prediction_loss_only, ignore_keys=None):
-        loss, logits, labels = super().prediction_step(
-            model,
-            inputs,
-            prediction_loss_only=False,  # we need logits once
-            ignore_keys=ignore_keys,
-        )
-        if logits is not None:
-            logits = logits.argmax(dim=-1)
-        return loss, logits, labels
-
+def preprocess_logits_for_metrics(logits, labels):
+    return logits.argmax(dim=-1)
 
 def get_sys_prompt(row):
     subject = row["base_cluster"]
@@ -135,13 +124,14 @@ def train_sft_curriculum(
         save_only_model=True,
         eval_on_start=True,
     )
-    trainer = ArgmaxTrainer(
+    trainer = Trainer(
         model=model,
         args=training_args,
         train_dataset=easy_train_ds,
         eval_dataset=test_ds,
         data_collator=data_collator,
         compute_metrics=compute_metrics,
+        preprocess_logits_for_metrics=preprocess_logits_for_metrics
     )
 
     trainer.train()
