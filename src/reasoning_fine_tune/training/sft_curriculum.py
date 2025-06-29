@@ -11,7 +11,7 @@ from transformers.training_args import TrainingArguments
 import reasoning_fine_tune.prompts.mmlu_single_token_answer as prompts
 from reasoning_fine_tune.utils.prepare_dataset_for_training import prepare_dataset_for_training
 
-BATCH_SIZE = 4
+BATCH_SIZE = 16
 
 class ArgmaxTrainer(Trainer):
     def prediction_step(self, model, inputs, prediction_loss_only, ignore_keys=None):
@@ -21,9 +21,8 @@ class ArgmaxTrainer(Trainer):
             prediction_loss_only=False,      # we need logits once
             ignore_keys=ignore_keys,
         )
-        # keep only the class ids; still keep sequence dim if you need one-per-token
         if logits is not None:
-            logits = logits.argmax(dim=-1).to(torch.int16)  # tiny!
+            logits = logits.argmax(dim=-1)
         return loss, logits, labels
 
 
@@ -43,6 +42,9 @@ def train_sft_curriculum(
 ):
     def compute_metrics(eval_pred):
         predictions, labels = eval_pred
+
+        labels = labels[..., 1:]
+        predictions = predictions[..., :-1]
 
         mask = (labels != -100) & (labels != tokenizer.eos_token_id)
         correct = (predictions == labels) & mask
@@ -106,7 +108,8 @@ def train_sft_curriculum(
     )
 
     print(easy_train_ds[0])
-    data_collator = DataCollatorForSeq2Seq(tokenizer=tokenizer, padding=True)
+
+    data_collator = DataCollatorForSeq2Seq(tokenizer=tokenizer, padding=True, return_tensors='pt')
 
     base_output_dir = Path(__file__).parent.joinpath("../../../artifacts/sft_curriculum").joinpath(name)
 
@@ -145,12 +148,16 @@ def train_sft_curriculum(
     training_args.output_dir = str(mid_output_dir)
     trainer.train_dataset = mid_train_ds
     trainer.state = TrainerState()
+    trainer.optimizer = None
+    trainer.lr_scheduler = None
 
     trainer.train()
 
     training_args.output_dir = str(hard_output_dir)
     trainer.train_dataset = hard_train_ds
     trainer.state = TrainerState()
+    trainer.optimizer = None
+    trainer.lr_scheduler = None
 
     trainer.train()
 
