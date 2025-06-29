@@ -19,8 +19,6 @@ def prepare_dataset_for_training(tokenizer, get_sys_prompt, get_user_prompt, df)
 
         answer_id = tokenizer.encode(str(row["answer_index"] + 1), add_special_tokens=False)[0]
 
-        assert type(answer_id) == int
-
         input_ids      = tokenized["input_ids"] + [answer_id]
         attention_mask = tokenized["attention_mask"] + [1]
 

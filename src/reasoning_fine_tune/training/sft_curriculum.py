@@ -11,7 +11,7 @@ from transformers.training_args import TrainingArguments
 import reasoning_fine_tune.prompts.mmlu_single_token_answer as prompts
 from reasoning_fine_tune.utils.prepare_dataset_for_training import prepare_dataset_for_training
 
-BATCH_SIZE = 16
+BATCH_SIZE = 8
 
 class ArgmaxTrainer(Trainer):
     def prediction_step(self, model, inputs, prediction_loss_only, ignore_keys=None):
@@ -109,7 +109,8 @@ def train_sft_curriculum(
 
     print(easy_train_ds[0])
 
-    data_collator = DataCollatorForSeq2Seq(tokenizer=tokenizer, padding=True, return_tensors='pt')
+    tokenizer.pad_token = tokenizer.eos_token
+    data_collator = DataCollatorForSeq2Seq(tokenizer=tokenizer, padding=True, pad_to_multiple_of=8, return_tensors='pt')
 
     base_output_dir = Path(__file__).parent.joinpath("../../../artifacts/sft_curriculum").joinpath(name)
 
