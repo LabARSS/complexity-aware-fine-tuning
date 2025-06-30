@@ -111,7 +111,7 @@ def train_sft_curriculum(
     mid_output_dir = base_output_dir.joinpath("mid")
     hard_output_dir = base_output_dir.joinpath("hard")
 
-    def create_trainer(model, output_dir, train_ds, num_train_epochs):
+    def create_trainer(model, output_dir, train_ds, num_train_epochs, eval_on_start=False):
         training_args = TrainingArguments(
             seed=42,
             output_dir=str(output_dir),
@@ -127,7 +127,7 @@ def train_sft_curriculum(
             overwrite_output_dir=True,
             save_total_limit=1,
             save_only_model=True,
-            eval_on_start=True,
+            eval_on_start=eval_on_start,
         )
         trainer = Trainer(
             model=model,
@@ -140,7 +140,7 @@ def train_sft_curriculum(
         )
         return trainer
 
-    trainer = create_trainer(model=model, output_dir=easy_output_dir, train_ds=easy_train_ds, num_train_epochs=3)
+    trainer = create_trainer(model=model, output_dir=easy_output_dir, train_ds=easy_train_ds, num_train_epochs=3, eval_on_start=True)
     trainer.train()
 
     trainer = create_trainer(model=model, output_dir=mid_output_dir, train_ds=mid_train_ds, num_train_epochs=3)
