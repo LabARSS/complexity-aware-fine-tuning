@@ -1,5 +1,5 @@
 import ast
-import gc
+import multiprocessing as mp
 import subprocess
 from pathlib import Path
 
@@ -40,11 +40,6 @@ def get_last_checkpoint_dir(path):
     return child_dirs[-1] if child_dirs else None
 
 
-def cleaup():
-    gc.collect()
-    torch.cuda.empty_cache()
-
-
 def preprocess_logits_for_metrics(logits, labels):
     return logits.argmax(dim=-1)
 
@@ -60,9 +55,11 @@ def get_user_prompt(row):
     return prompts.single_token_answer_prompt_with_fallback_for_unknown_answers(question, options)
 
 
-def train_sft_curriculum_stage(output_subpath, model_id, train_df_path, test_df_path, num_train_epochs, eval_on_start=False):
+def train_sft_curriculum_stage(
+    output_subpath, model_id, train_df_path, test_df_path, num_train_epochs, eval_on_start=False
+):
     print(subprocess.run(["nvidia-smi"], capture_output=True, text=True).stdout)
-    
+
     tokenizer = AutoTokenizer.from_pretrained(model_id)
 
     def compute_metrics(eval_pred):
@@ -121,7 +118,6 @@ def train_sft_curriculum_stage(output_subpath, model_id, train_df_path, test_df_
 
     output_dir = Path(__file__).parent.joinpath("../../../artifacts/sft_curriculum").joinpath(output_subpath)
 
-
     model = AutoModelForCausalLM.from_pretrained(model_id, device_map=DEVICE_MAP)
     inferred_device_map = model.hf_device_map
     print("\nInferred Device Map:", inferred_device_map)
@@ -159,19 +155,53 @@ def train_sft_curriculum_stage(output_subpath, model_id, train_df_path, test_df_
     return get_last_checkpoint_dir(output_dir)
 
 
+def _stage_worker(q, kwargs):
+    ckpt = train_sft_curriculum_stage(**kwargs)
+    q.put(ckpt)
+
+
+def _run_stage_mp(**kwargs):
+    ctx = mp.get_context("spawn")  # safe with CUDA
+    q = ctx.Queue()
+    p = ctx.Process(target=_stage_worker, args=(q, kwargs))
+    p.start()
+    p.join()
+    if p.exitcode != 0:
+        raise RuntimeError(f"stage crashed with {p.exitcode}")
+    return Path(q.get())
+
+
 def train_sft_curriculum(name, model_id, easy_train_df_path, mid_train_df_path, hard_train_df_path, test_df_path):
     np.random.seed(42)
     torch.manual_seed(42)
 
     print(f"Using device: {DEVICE_MAP}")
 
-    easy_output_dir = train_sft_curriculum_stage(output_subpath=f"{name}/easy", model_id=model_id, train_df_path=easy_train_df_path, test_df_path=test_df_path, num_train_epochs=3, eval_on_start=True)
-    cleaup()
+    easy_output_dir = _run_stage_mp(
+        output_subpath=f"{name}/easy",
+        model_id=model_id,
+        train_df_path=easy_train_df_path,
+        test_df_path=test_df_path,
+        num_train_epochs=3,
+        eval_on_start=True,
+    )
 
-    mid_output_dir = train_sft_curriculum_stage(output_subpath=f"{name}/mid", model_id=easy_output_dir, train_df_path=mid_train_df_path, test_df_path=test_df_path, num_train_epochs=3, eval_on_start=False)
-    cleaup()
+    mid_output_dir = _run_stage_mp(
+        output_subpath=f"{name}/mid",
+        model_id=easy_output_dir,
+        train_df_path=mid_train_df_path,
+        test_df_path=test_df_path,
+        num_train_epochs=3,
+        eval_on_start=False,
+    )
 
-    hard_output_dir = train_sft_curriculum_stage(output_subpath=f"{name}/hard", model_id=mid_output_dir, train_df_path=hard_train_df_path, test_df_path=test_df_path, num_train_epochs=3, eval_on_start=False)
-    cleaup()
+    hard_output_dir = _run_stage_mp(
+        output_subpath=f"{name}/hard",
+        model_id=mid_output_dir,
+        train_df_path=hard_train_df_path,
+        test_df_path=test_df_path,
+        num_train_epochs=3,
+        eval_on_start=False,
+    )
 
     return hard_output_dir
