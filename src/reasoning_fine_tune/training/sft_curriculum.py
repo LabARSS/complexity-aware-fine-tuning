@@ -44,8 +44,6 @@ def cleaup():
     gc.collect()
     torch.cuda.empty_cache()
 
-    print(subprocess.run(["nvidia-smi"], capture_output=True, text=True).stdout)
-
 
 def preprocess_logits_for_metrics(logits, labels):
     return logits.argmax(dim=-1)
@@ -63,6 +61,8 @@ def get_user_prompt(row):
 
 
 def train_sft_curriculum_stage(output_subpath, model_id, train_df_path, test_df_path, num_train_epochs, eval_on_start=False):
+    print(subprocess.run(["nvidia-smi"], capture_output=True, text=True).stdout)
+    
     tokenizer = AutoTokenizer.from_pretrained(model_id)
 
     def compute_metrics(eval_pred):
