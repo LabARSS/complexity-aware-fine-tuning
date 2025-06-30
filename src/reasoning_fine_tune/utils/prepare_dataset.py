@@ -1,7 +1,7 @@
 from datasets import Dataset
 
 
-def prepare_dataset_for_training(tokenizer, get_sys_prompt, get_user_prompt, df):
+def prepare_dataset(tokenizer, get_sys_prompt, get_user_prompt, df, mask_input=False):
     df["sys_prompt"] = df.apply(get_sys_prompt, axis=1)
     df["user_prompt"] = df.apply(get_user_prompt, axis=1)
 
@@ -21,7 +21,11 @@ def prepare_dataset_for_training(tokenizer, get_sys_prompt, get_user_prompt, df)
         input_ids = tokenized["input_ids"] + [answer_id]
         attention_mask = tokenized["attention_mask"] + [1]
 
-        labels = [-100] * len(tokenized["input_ids"]) + [answer_id]
+        labels = input_ids.copy()
+
+        if mask_input:
+            for i in range(len(tokenized["input_ids"])):
+                labels[i] = -100
 
         return {"input_ids": input_ids, "attention_mask": attention_mask, "labels": labels}
 
