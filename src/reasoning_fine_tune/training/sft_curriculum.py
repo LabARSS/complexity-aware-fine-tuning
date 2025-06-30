@@ -202,7 +202,7 @@ def train_sft_curriculum(name, model_id, easy_train_df_path, mid_train_df_path, 
     trainer = create_trainer(model=model, output_dir=mid_output_dir, train_ds=mid_train_ds, num_train_epochs=3)
     trainer.train()
 
-    del trainer.model
+    del model
     del trainer
     cleaup()
 
@@ -213,8 +213,8 @@ def train_sft_curriculum(name, model_id, easy_train_df_path, mid_train_df_path, 
     trainer = create_trainer(model=model, output_dir=hard_output_dir, train_ds=hard_train_ds, num_train_epochs=4)
     trainer.train()
 
-    del trainer.model
+    del model
     del trainer
     cleaup()
 
-    return model
+    return get_last_checkpoint_dir(hard_output_dir)
