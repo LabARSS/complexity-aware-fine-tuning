@@ -1,7 +1,9 @@
 import ast
+import gc
 from pathlib import Path
 
 import pandas as pd
+import torch
 from transformers.data.data_collator import DataCollatorForTokenClassification
 from transformers.trainer import Trainer
 from transformers.trainer_callback import TrainerState
@@ -11,6 +13,10 @@ import reasoning_fine_tune.prompts.mmlu_single_token_answer as prompts
 from reasoning_fine_tune.utils.prepare_dataset import prepare_dataset
 
 BATCH_SIZE = 8
+
+def cleaup():
+    gc.collect()
+    torch.cuda.empty_cache()
 
 def preprocess_logits_for_metrics(logits, labels):
     return logits.argmax(dim=-1)
@@ -142,11 +148,17 @@ def train_sft_curriculum(
 
     trainer = create_trainer(model=model, output_dir=easy_output_dir, train_ds=easy_train_ds, num_train_epochs=3, eval_on_start=True)
     trainer.train()
+    del trainer
+    cleaup()
 
     trainer = create_trainer(model=model, output_dir=mid_output_dir, train_ds=mid_train_ds, num_train_epochs=3)
     trainer.train()
+    del trainer
+    cleaup()
 
     trainer = create_trainer(model=model, output_dir=hard_output_dir, train_ds=hard_train_ds, num_train_epochs=4)
     trainer.train()
+    del trainer
+    cleaup()
 
     return model
