@@ -12,11 +12,6 @@ from reasoning_fine_tune.utils.prepare_dataset import prepare_dataset
 
 BATCH_SIZE = 8
 
-def reset_trainer(trainer):
-    trainer.state = TrainerState()
-    trainer.optimizer = None
-    trainer.lr_scheduler = None
-
 def preprocess_logits_for_metrics(logits, labels):
     return logits.argmax(dim=-1)
 
@@ -116,45 +111,42 @@ def train_sft_curriculum(
     mid_output_dir = base_output_dir.joinpath("mid")
     hard_output_dir = base_output_dir.joinpath("hard")
 
-    training_args = TrainingArguments(
-        seed=42,
-        output_dir=str(easy_output_dir),
-        num_train_epochs=5,
-        per_device_train_batch_size=BATCH_SIZE,
-        per_device_eval_batch_size=BATCH_SIZE,
-        bf16=True,
-        bf16_full_eval=True,
-        logging_strategy="epoch",
-        eval_strategy="epoch",
-        report_to="none",
-        save_strategy="epoch",
-        overwrite_output_dir=True,
-        save_total_limit=1,
-        save_only_model=True,
-        eval_on_start=True,
-    )
-    trainer = Trainer(
-        model=model,
-        args=training_args,
-        train_dataset=easy_train_ds,
-        eval_dataset=test_ds,
-        data_collator=data_collator,
-        compute_metrics=compute_metrics,
-        preprocess_logits_for_metrics=preprocess_logits_for_metrics
-    )
+    def create_trainer(model, output_dir, train_ds, num_train_epochs):
+        training_args = TrainingArguments(
+            seed=42,
+            output_dir=str(output_dir),
+            num_train_epochs=num_train_epochs,
+            per_device_train_batch_size=BATCH_SIZE,
+            per_device_eval_batch_size=BATCH_SIZE,
+            bf16=True,
+            bf16_full_eval=True,
+            logging_strategy="epoch",
+            eval_strategy="epoch",
+            report_to="none",
+            save_strategy="epoch",
+            overwrite_output_dir=True,
+            save_total_limit=1,
+            save_only_model=True,
+            eval_on_start=True,
+        )
+        trainer = Trainer(
+            model=model,
+            args=training_args,
+            train_dataset=train_ds,
+            eval_dataset=test_ds,
+            data_collator=data_collator,
+            compute_metrics=compute_metrics,
+            preprocess_logits_for_metrics=preprocess_logits_for_metrics
+        )
+        return trainer
 
+    trainer = create_trainer(model=model, output_dir=easy_output_dir, train_ds=easy_train_ds, num_train_epochs=3)
     trainer.train()
 
-    training_args.output_dir = str(mid_output_dir)
-    trainer.train_dataset = mid_train_ds
-    reset_trainer(trainer)
-
+    trainer = create_trainer(model=model, output_dir=mid_output_dir, train_ds=mid_train_ds, num_train_epochs=3)
     trainer.train()
 
-    training_args.output_dir = str(hard_output_dir)
-    trainer.train_dataset = hard_train_ds
-    reset_trainer(trainer)
-
+    trainer = create_trainer(model=model, output_dir=hard_output_dir, train_ds=hard_train_ds, num_train_epochs=4)
     trainer.train()
 
-    return trainer.model
+    return model
