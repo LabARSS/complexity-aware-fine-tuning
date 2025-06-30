@@ -171,7 +171,7 @@ def train_sft_curriculum(name, model_id, easy_train_df_path, mid_train_df_path, 
     mid_output_dir = train_sft_curriculum_stage(output_subpath=f"{name}/mid", model_id=easy_output_dir, train_df_path=mid_train_df_path, test_df_path=test_df_path, num_train_epochs=3, eval_on_start=False)
     cleaup()
 
-    hard_output_dir = train_sft_curriculum_stage(output_subpath=f"{name}/hard", model_id=mid_output_dir, train_df_path=mid_train_df_path, test_df_path=test_df_path, num_train_epochs=3, eval_on_start=False)
+    hard_output_dir = train_sft_curriculum_stage(output_subpath=f"{name}/hard", model_id=mid_output_dir, train_df_path=hard_train_df_path, test_df_path=test_df_path, num_train_epochs=3, eval_on_start=False)
     cleaup()
 
     return hard_output_dir
