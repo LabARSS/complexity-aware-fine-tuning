@@ -46,13 +46,13 @@ def preprocess_logits_for_metrics(logits, labels):
 
 def get_sys_prompt(row):
     subject = row["base_cluster"]
-    return prompts.single_token_sys_prompt_with_fallback_for_unknown_answers(subject)
+    return prompts.single_token_sys_prompt(subject)
 
 
 def get_user_prompt(row):
     question = row["question"]
     options = ast.literal_eval(row["options"])
-    return prompts.single_token_answer_prompt_with_fallback_for_unknown_answers(question, options)
+    return prompts.single_token_answer_prompt(question, options)
 
 
 def train_sft_curriculum_stage(
