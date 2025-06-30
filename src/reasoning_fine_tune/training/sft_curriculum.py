@@ -2,17 +2,43 @@ import ast
 import gc
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 import torch
 from transformers.data.data_collator import DataCollatorForTokenClassification
+from transformers.models.auto.modeling_auto import AutoModelForCausalLM
+from transformers.models.auto.tokenization_auto import AutoTokenizer
 from transformers.trainer import Trainer
 from transformers.trainer_callback import TrainerState
 from transformers.training_args import TrainingArguments
 
+
 import reasoning_fine_tune.prompts.mmlu_single_token_answer as prompts
 from reasoning_fine_tune.utils.prepare_dataset import prepare_dataset
+from reasoning_fine_tune.utils.device import DEVICE_MAP
 
 BATCH_SIZE = 8
+
+def get_last_checkpoint_dir(path):
+    """
+    List all direct child directories of *path* and return the one that is
+    alphabetically last. Returns None if the directory has no children.
+
+    Examples
+    --------
+    >>> get_last_checkpoint_dir('/tmp')  # doctest: +SKIP
+    PosixPath('/tmp/z_latest')
+    """
+    p = Path(path)
+
+    if not p.is_dir():
+        raise NotADirectoryError(f"{p} is not a directory")
+
+    child_dirs = [d for d in p.iterdir() if d.is_dir()]
+    child_dirs.sort()                      # alphabetical, case-sensitive
+
+    return child_dirs[-1] if child_dirs else None
+
 
 def cleaup():
     gc.collect()
@@ -33,8 +59,15 @@ def get_user_prompt(row):
 
 
 def train_sft_curriculum(
-    name, model, tokenizer, easy_train_df_path, mid_train_df_path, hard_train_df_path, test_df_path
+    name, model_id, easy_train_df_path, mid_train_df_path, hard_train_df_path, test_df_path
 ):
+    np.random.seed(42)
+    torch.manual_seed(42)
+
+    print(f"Using device: {DEVICE_MAP}")
+
+    tokenizer = AutoTokenizer.from_pretrained(model_id)
+
     def compute_metrics(eval_pred):
         predictions, labels = eval_pred
 
@@ -120,6 +153,7 @@ def train_sft_curriculum(
     def create_trainer(model, output_dir, train_ds, num_train_epochs, eval_on_start=False):
         training_args = TrainingArguments(
             seed=42,
+            data_seed=42,
             output_dir=str(output_dir),
             num_train_epochs=num_train_epochs,
             per_device_train_batch_size=BATCH_SIZE,
@@ -145,19 +179,38 @@ def train_sft_curriculum(
             preprocess_logits_for_metrics=preprocess_logits_for_metrics
         )
         return trainer
+    
+    model = AutoModelForCausalLM.from_pretrained(model_id, device_map=DEVICE_MAP)
+    inferred_device_map = model.hf_device_map
+    print("\nInferred Device Map:", inferred_device_map)
 
     trainer = create_trainer(model=model, output_dir=easy_output_dir, train_ds=easy_train_ds, num_train_epochs=3, eval_on_start=True)
     trainer.train()
+
+    # Otherwise, repeated training causes CUDA OOM
+    del model
     del trainer
     cleaup()
+
+    model = AutoModelForCausalLM.from_pretrained(get_last_checkpoint_dir(easy_output_dir), device_map=DEVICE_MAP)
+    inferred_device_map = model.hf_device_map
+    print("\nInferred Device Map:", inferred_device_map)
 
     trainer = create_trainer(model=model, output_dir=mid_output_dir, train_ds=mid_train_ds, num_train_epochs=3)
     trainer.train()
+
+    del trainer.model
     del trainer
     cleaup()
 
+    model = AutoModelForCausalLM.from_pretrained(get_last_checkpoint_dir(mid_output_dir), device_map=DEVICE_MAP)
+    inferred_device_map = model.hf_device_map
+    print("\nInferred Device Map:", inferred_device_map)
+
     trainer = create_trainer(model=model, output_dir=hard_output_dir, train_ds=hard_train_ds, num_train_epochs=4)
     trainer.train()
+
+    del trainer.model
     del trainer
     cleaup()
 
