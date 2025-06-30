@@ -1,5 +1,6 @@
 import ast
 import gc
+import subprocess
 from pathlib import Path
 
 import numpy as np
@@ -42,6 +43,8 @@ def get_last_checkpoint_dir(path):
 def cleaup():
     gc.collect()
     torch.cuda.empty_cache()
+
+    print(subprocess.run(["nvidia-smi"], capture_output=True, text=True).stdout)
 
 
 def preprocess_logits_for_metrics(logits, labels):
