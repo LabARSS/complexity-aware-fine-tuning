@@ -139,6 +139,8 @@ def train_sft_curriculum_stage(
         save_total_limit=1,
         save_only_model=True,
         eval_on_start=eval_on_start,
+        lr_scheduler_type='constant',
+        learning_rate=1e-5
     )
     trainer = Trainer(
         model=model,
