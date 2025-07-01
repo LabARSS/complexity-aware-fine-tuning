@@ -10,11 +10,13 @@ from reasoning_fine_tune.utils.device import DEVICE_MAP
 
 print(f"Using device: {DEVICE_MAP}")
 
-MODEL_NAME = "REPLACE_WITH_PATH_TO_SAVED_WEIGHTS"
+
+MODEL_NAME = "Qwen/Qwen2.5-3B-Instruct" 
+SAVED_WEIGHTS = Path(__file__).parent.joinpath('../../../artifacts/pipeline/qwen/epoch_5_cot_after_sft/').resolve()
 
 tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
 
-model = AutoModelForCausalLM.from_pretrained(MODEL_NAME, device_map=DEVICE_MAP, torch_dtype=torch.bfloat16)
+model = AutoModelForCausalLM.from_pretrained(SAVED_WEIGHTS, device_map=DEVICE_MAP, torch_dtype=torch.bfloat16)
 
 inferred_device_map = model.hf_device_map
 print("\nInferred Device Map:", inferred_device_map)
