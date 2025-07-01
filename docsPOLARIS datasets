@@ -1,0 +1,13 @@
+Two base datasets:
+
+
+DeepScaleR-40K - ~40,000 (many math and logic tasks) / various difficulties
+
+AReaL-boba-106k - ~106,000 (math and logic problems, many with chain-of-thought solutions and final answers)
+
+Polaris team used final ~53K filtered samples (about 26K from DeepScaleR and 27K from AReaL) for DeepSeek-R1-Distill-Qwen-7B and ~30K for Qwen3-4B.
+This datasets are interesting because:
+- The difficulty level is appropriate for our models (4–20 B parameters)
+- A ready-made “course” with a balanced mix of easy, medium, and hard tasks, nothing overwhelming, but not too simple either
+- A reasonable size (~53 k examples)
+- Math and logic problems are excellent for reasoning practice and chain-of-thought exercises
