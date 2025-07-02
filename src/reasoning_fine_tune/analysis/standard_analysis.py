@@ -10,7 +10,9 @@ from reasoning_fine_tune.utils.processing import extract_cot_answer_entropy_from
 from reasoning_fine_tune.utils.validation import keep_only_valid_and_known_answers
 
 
-def standard_analysis_single_token_response(df_path, ans_col, ans_correct_col, entropy_col, title: str):
+def standard_analysis_single_token_response(
+    df_path, ans_col, ans_correct_col, entropy_col, title: str, show=["graphs", "tables"]
+):
     df = pd.read_csv(
         df_path,
         sep="\t",
@@ -27,58 +29,67 @@ def standard_analysis_single_token_response(df_path, ans_col, ans_correct_col, e
 
     save_to_dir = f"single token/{title.lower()}"
 
-    visualize_all(df, entropy_col, ans_correct_col, model_name=title, save_to=f"{save_to_dir}/entropy")
+    if "graphs" in show:
+        visualize_all(df, entropy_col, ans_correct_col, model_name=title, save_to=f"{save_to_dir}/entropy")
 
-    visualize_all(
-        df,
-        "masj_edu_level_norm",
-        ans_correct_col,
-        model_name=title,
-        x_label="Education level",
-        save_to=f"{save_to_dir}/edu_level",
-    )
+        visualize_all(
+            df,
+            "masj_edu_level_norm",
+            ans_correct_col,
+            model_name=title,
+            x_label="Education level",
+            save_to=f"{save_to_dir}/edu_level",
+        )
 
-    visualize_all(
-        df,
-        "masj_num_reasoning_steps_norm",
-        ans_correct_col,
-        model_name=title,
-        x_label="Reasoning score",
-        save_to=f"{save_to_dir}/reasoning_score",
-    )
+        visualize_all(
+            df,
+            "masj_num_reasoning_steps_norm",
+            ans_correct_col,
+            model_name=title,
+            x_label="Reasoning score",
+            save_to=f"{save_to_dir}/reasoning_score",
+        )
 
-    roc_auc_entropy = calculate_roc_auc_by_category(
-        df,
-        category_cols=["category", "masj_edu_level", "masj_num_reasoning_steps"],
-        model_answer_correct_col=ans_correct_col,
-        score_col=entropy_col,
-        model_name=title,
-    )
-    display(roc_auc_entropy)
+    if "tables" in show:
+        roc_auc_entropy = calculate_roc_auc_by_category(
+            df,
+            category_cols=["category", "masj_edu_level", "masj_num_reasoning_steps"],
+            model_answer_correct_col=ans_correct_col,
+            score_col=entropy_col,
+            model_name=title,
+        )
+        display(roc_auc_entropy)
 
-    roc_auc_edu_level = calculate_roc_auc_by_category(
-        df,
-        category_cols=[],
-        model_answer_correct_col=ans_correct_col,
-        score_col="masj_edu_level_norm",
-        model_name=title,
-        norm_basis=1.0,
-    )
-    display(roc_auc_edu_level)
+        roc_auc_edu_level = calculate_roc_auc_by_category(
+            df,
+            category_cols=[],
+            model_answer_correct_col=ans_correct_col,
+            score_col="masj_edu_level_norm",
+            model_name=title,
+            norm_basis=1.0,
+        )
+        display(roc_auc_edu_level)
 
-    roc_auc_reasoning_score = calculate_roc_auc_by_category(
-        df,
-        category_cols=[],
-        model_answer_correct_col=ans_correct_col,
-        score_col="masj_num_reasoning_steps_norm",
-        model_name=title,
-        norm_basis=1.0,
-    )
-    display(roc_auc_reasoning_score)
+        roc_auc_reasoning_score = calculate_roc_auc_by_category(
+            df,
+            category_cols=[],
+            model_answer_correct_col=ans_correct_col,
+            score_col="masj_num_reasoning_steps_norm",
+            model_name=title,
+            norm_basis=1.0,
+        )
+        display(roc_auc_reasoning_score)
 
 
 def standard_analysis_cot_response(
-    df_path, col_ans_token_index, col_every_token_info, col_entropies, col_ans_correct, model_name, title
+    df_path,
+    col_ans_token_index,
+    col_every_token_info,
+    col_entropies,
+    col_ans_correct,
+    model_name,
+    title,
+    show=["graphs", "tables"],
 ):
     df = pd.read_parquet(df_path)
 
@@ -108,51 +119,53 @@ def standard_analysis_cot_response(
 
     save_to_dir = f"cot/{title.lower()}"
 
-    visualize_all(df, "model_answer_entropy", col_ans_correct, model_name=title, save_to=f"{save_to_dir}/entropy")
+    if "graphs" in show:
+        visualize_all(df, "model_answer_entropy", col_ans_correct, model_name=title, save_to=f"{save_to_dir}/entropy")
 
-    visualize_all(
-        df,
-        "masj_edu_level_norm",
-        col_ans_correct,
-        model_name=title,
-        x_label="Education level",
-        save_to=f"{save_to_dir}/edu_level",
-    )
+        visualize_all(
+            df,
+            "masj_edu_level_norm",
+            col_ans_correct,
+            model_name=title,
+            x_label="Education level",
+            save_to=f"{save_to_dir}/edu_level",
+        )
 
-    visualize_all(
-        df,
-        "masj_num_reasoning_steps_norm",
-        col_ans_correct,
-        model_name=title,
-        x_label="Reasoning score",
-        save_to=f"{save_to_dir}/reasoning_score",
-    )
+        visualize_all(
+            df,
+            "masj_num_reasoning_steps_norm",
+            col_ans_correct,
+            model_name=title,
+            x_label="Reasoning score",
+            save_to=f"{save_to_dir}/reasoning_score",
+        )
 
-    roc_auc_entropy = calculate_roc_auc_by_category(
-        df,
-        category_cols=["category", "masj_edu_level", "masj_num_reasoning_steps"],
-        model_answer_correct_col=col_ans_correct,
-        score_col="model_answer_entropy",
-        model_name=title,
-    )
-    display(roc_auc_entropy)
+    if "tables" in show:
+        roc_auc_entropy = calculate_roc_auc_by_category(
+            df,
+            category_cols=["category", "masj_edu_level", "masj_num_reasoning_steps"],
+            model_answer_correct_col=col_ans_correct,
+            score_col="model_answer_entropy",
+            model_name=title,
+        )
+        display(roc_auc_entropy)
 
-    roc_auc_edu_level = calculate_roc_auc_by_category(
-        df,
-        category_cols=[],
-        model_answer_correct_col=col_ans_correct,
-        score_col="masj_edu_level_norm",
-        model_name=title,
-        norm_basis=1.0,
-    )
-    display(roc_auc_edu_level)
+        roc_auc_edu_level = calculate_roc_auc_by_category(
+            df,
+            category_cols=[],
+            model_answer_correct_col=col_ans_correct,
+            score_col="masj_edu_level_norm",
+            model_name=title,
+            norm_basis=1.0,
+        )
+        display(roc_auc_edu_level)
 
-    roc_auc_reasoning_score = calculate_roc_auc_by_category(
-        df,
-        category_cols=[],
-        model_answer_correct_col=col_ans_correct,
-        score_col="masj_num_reasoning_steps_norm",
-        model_name=title,
-        norm_basis=1.0,
-    )
-    display(roc_auc_reasoning_score)
+        roc_auc_reasoning_score = calculate_roc_auc_by_category(
+            df,
+            category_cols=[],
+            model_answer_correct_col=col_ans_correct,
+            score_col="masj_num_reasoning_steps_norm",
+            model_name=title,
+            norm_basis=1.0,
+        )
+        display(roc_auc_reasoning_score)
