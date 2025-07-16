@@ -105,7 +105,7 @@ def estimate_dataset(
         )
 
         # They are all padded to the same length
-        input_length = batch["input_ids"][0].shape[1]
+        input_length = batch["input_ids"].shape[1]
         answer_token_batch = outputs.sequences[:, input_length:]
         answer_batch = tokenizer.decode(answer_token_batch, skip_special_tokens=True)
 
