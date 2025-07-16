@@ -8,3 +8,7 @@ if torch.cuda.is_available():
 if torch.mps.is_available():
     DEVICE = torch.device("mps")
     DEVICE_MAP = "mps"
+
+
+def move_batch_to_device(batch, device):
+    return {k: v.to(device) if hasattr(v, "to") else v for k, v in batch.items()}
