@@ -122,9 +122,11 @@ def estimate_dataset(
             else:
                 invalid_answers += 1
 
-        # print(
-        #     f"Answer: {answer}\nEntropy: {df.at[index, field_entropy_value]}\nis_correct: {df.at[index, field_ans_correct]}\ndims:{input_length}, {outputs.sequences.shape}\n\n"
-        # )
+            # For debug
+            if batch_idx == 0:
+                print(
+                    f"Answer: {answer}\nEntropy: {df.at[row_idx, field_entropy_value]}\nis_correct: {df.at[row_idx, field_ans_correct]}\ndims:{input_length}, {outputs.sequences.shape}\n\n"
+                )
 
     df.to_csv(out_filename, sep="\t", index=False)
     print(f"Processed dataset {out_filename}. Total entries: {df.shape[0]}. Invalid answers: {invalid_answers}")
