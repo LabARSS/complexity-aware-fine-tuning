@@ -10,6 +10,7 @@ from transformers import DataCollatorWithPadding
 import reasoning_fine_tune.prompts.mmlu_single_token_answer as mmlu_prompts
 from reasoning_fine_tune.entropy_estimation.logit_entropy import compute_entropy_from_logits
 from reasoning_fine_tune.utils.device import DEVICE, move_batch_to_device
+from reasoning_fine_tune.utils.seed import set_seed
 from reasoning_fine_tune.utils.validation import validate_mmlu_answer
 
 
@@ -27,7 +28,10 @@ def estimate_dataset(
     get_user_prompt=mmlu_prompts.single_token_answer_prompt,
     batch_size=16,
 ):
-    invalid_answers = 0
+    invalid_formatting = 0
+    correct_answers = 0
+
+    set_seed()
 
     df = pd.read_csv(
         in_filename,
@@ -49,7 +53,7 @@ def estimate_dataset(
     if field_ans not in df.columns:
         df[field_ans] = ""
 
-    tokenizer.padding_side = "right"
+    tokenizer.padding_side = "left"
 
     ds = Dataset.from_pandas(df)
 
@@ -73,18 +77,20 @@ def estimate_dataset(
         preprocess_ds,
         num_proc=4,
         batched=False,
-        remove_columns=[col for col in ds.column_names if col not in ["input_ids", "attention_mask", "label"]],
+        remove_columns=[col for col in ds.column_names if col not in ["input_ids", "attention_mask"]],
     )
 
     print("\nDs sample:\n")
     print("\n\n".join(tokenizer.batch_decode(ds[:3]["input_ids"])))
 
     data_collator = DataCollatorWithPadding(tokenizer)
-    dataloader = DataLoader(ds, batch_size=batch_size, shuffle=True, collate_fn=data_collator)
+    dataloader = DataLoader(ds, batch_size=batch_size, shuffle=False, collate_fn=data_collator)
 
     batch = next(iter(dataloader))
 
-    for batch_idx, batch in enumerate(tqdm(dataloader)):
+
+    pbar = tqdm(dataloader)
+    for batch_idx, batch in enumerate(pbar):
         gc.collect()
         if DEVICE == torch.device("cuda"):
             torch.cuda.empty_cache()
@@ -107,27 +113,33 @@ def estimate_dataset(
         # They are all padded to the same length
         input_length = batch["input_ids"].shape[1]
         answer_token_batch = outputs.sequences[:, input_length:]
-        answer_batch = tokenizer.decode(answer_token_batch, skip_special_tokens=True)
+        answer_batch = tokenizer.batch_decode(answer_token_batch, skip_special_tokens=True)
 
         for answer_idx, answer in enumerate(answer_batch):
             row_idx = batch_idx * batch_size + answer_idx
             df.at[row_idx, field_ans] = answer
             # generated token position, batch_dim
-            final_token_logits = outputs.scores[-1][0]
+            final_token_logits = outputs.scores[-1][answer_idx]
             entropy = compute_entropy_from_logits(final_token_logits)
             df.at[row_idx, field_entropy_value] = entropy
 
             if validate_mmlu_answer(answer):
-                df.at[row_idx, field_ans_correct] = check_answer_correct(df.iloc[row_idx], answer)
+                is_correct = check_answer_correct(df.iloc[row_idx], answer)
+                df.at[row_idx, field_ans_correct] = is_correct
+                if is_correct:
+                    correct_answers += 1
             else:
-                invalid_answers += 1
+                invalid_formatting += 1
 
             # For debug
-            if batch_idx == 0:
+            if batch_idx == 0 and answer_idx < 10:
                 print(
-                    f"Answer: {answer}\nEntropy: {df.at[row_idx, field_entropy_value]}\nis_correct: {df.at[row_idx, field_ans_correct]}\ndims:{input_length}, {outputs.sequences.shape}\n\n"
+                    f"Answer: {answer}\nEntropy: {df.at[row_idx, field_entropy_value]}\nis_correct: {df.at[row_idx, field_ans_correct]}\n"
                 )
+        
+        total = batch_idx * batch_size + len(answer_batch)
+        pbar.set_description(f"accuracy={correct_answers/total:.2f} / invalid formatting={invalid_formatting}")
 
     df.to_csv(out_filename, sep="\t", index=False)
-    print(f"Processed dataset {out_filename}. Total entries: {df.shape[0]}. Invalid answers: {invalid_answers}")
+    print(f"Processed dataset {out_filename}. Total entries: {df.shape[0]}. Invalid formatting: {invalid_formatting}")
     return df

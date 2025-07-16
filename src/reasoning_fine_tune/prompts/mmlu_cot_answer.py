@@ -11,7 +11,7 @@ def cot_sys_prompt(subject: str | None = None):
     else:
         sys_msg = "The following are multiple choice questions."
 
-    sys_msg += f" Explain your thinking process step-by-step. At the end, choose a correct option by strictly following this format: {answer_marker[0]}correct_option{answer_marker[1]}."
+    sys_msg += f" Explain your thinking process step-by-step. At the end, choose a correct option letter by strictly following this format: {answer_marker[0]}correct_option{answer_marker[1]}."
     return sys_msg
 
 
@@ -21,7 +21,7 @@ def cot_sys_prompt_with_fallback_for_unknown_answers(subject: str | None = None)
     else:
         sys_msg = "The following are multiple choice questions."
 
-    sys_msg += f" Explain your thinking process step-by-step. At the end, if you are certain about the answer choose a correct option by strictly following this format: {answer_marker[0]}correct_option{answer_marker[1]}, otherwise return {answer_marker[0]}{fallback_option_id}{answer_marker[1]}."
+    sys_msg += f" Explain your thinking process step-by-step. At the end, if you are certain about the answer choose a correct option letter by strictly following this format: {answer_marker[0]}correct_option{answer_marker[1]}, otherwise return {answer_marker[0]}{fallback_option_id}{answer_marker[1]}."
     return sys_msg
 
 
@@ -31,7 +31,7 @@ def cot_sys_prompt_with_fallback_for_unknown_answers_alternative(subject: str | 
     else:
         sys_msg = "The following are multiple choice questions."
 
-    sys_msg += f" Explain your thinking process step-by-step. At the end, if you know the answer choose a correct option by strictly following this format: {answer_marker[0]}correct_option{answer_marker[1]}, otherwise return {answer_marker[0]}{fallback_option_id}{answer_marker[1]}."
+    sys_msg += f" Explain your thinking process step-by-step. At the end, if you know the answer choose a correct option letter by strictly following this format: {answer_marker[0]}correct_option{answer_marker[1]}, otherwise return {answer_marker[0]}{fallback_option_id}{answer_marker[1]}."
     return sys_msg
 
 

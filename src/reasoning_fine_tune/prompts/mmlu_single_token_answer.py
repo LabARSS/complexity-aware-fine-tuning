@@ -9,7 +9,7 @@ def single_token_sys_prompt(subject: str | None = None):
     else:
         sys_msg = "The following are multiple choice questions."
 
-    sys_msg += " Choose a correct option."
+    sys_msg += " Choose a correct option letter. Answer with a single symbol. Do not print anything else."
     return sys_msg
 
 
@@ -19,7 +19,7 @@ def single_token_sys_prompt_with_fallback_for_unknown_answers(subject: str | Non
     else:
         sys_msg = "The following are multiple choice questions."
 
-    sys_msg += f" If you are certain about the answer choose a correct option, otherwise return {fallback_option_id}."
+    sys_msg += f" If you are certain about the answer choose a correct option letter, otherwise return {fallback_option_id}. Answer with a single symbol. Do not print anything else."
     return sys_msg
 
 
@@ -29,7 +29,7 @@ def single_token_sys_prompt_with_fallback_for_unknown_answers_alternative(subjec
     else:
         sys_msg = "The following are multiple choice questions."
 
-    sys_msg += f" If you know the answer choose a correct option, otherwise return {fallback_option_id}."
+    sys_msg += f" If you know the answer choose a correct option letter, otherwise return {fallback_option_id}. Answer with a single symbol. Do not print anything else."
     return sys_msg
 
 
