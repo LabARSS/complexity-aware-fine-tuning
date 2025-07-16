@@ -1,4 +1,4 @@
-from reasoning_fine_tune.prompts.mmlu_single_token_answer import option_ids, option_ids_w_fallback
+from reasoning_fine_tune.prompts.mmlu_option_ids import option_ids, option_ids_w_fallback
 
 
 def validate_mmlu_answer(answer: str | int):
