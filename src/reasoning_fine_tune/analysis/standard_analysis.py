@@ -6,8 +6,10 @@ from reasoning_fine_tune.analysis.join_with_masj_education_levels import join_wi
 from reasoning_fine_tune.analysis.join_with_masj_reasoning_score import join_with_masj_reasoning_score
 from reasoning_fine_tune.analysis.roc_auc import calculate_roc_auc_by_category
 from reasoning_fine_tune.analysis.visualize_all import visualize_all
+from reasoning_fine_tune.prompts.estimate_education_level import valid_education_levels
+from reasoning_fine_tune.utils.graph_style import set_style
 from reasoning_fine_tune.utils.processing import extract_cot_answer_entropy_from_row, extract_cot_answer_from_row
-from reasoning_fine_tune.utils.validation import keep_only_valid_and_known_answers
+from reasoning_fine_tune.utils.validation import extract_unknown_answers, keep_only_valid_and_known_answers
 
 
 def standard_analysis_single_token_response(
@@ -20,6 +22,8 @@ def standard_analysis_single_token_response(
         dtype={ans_col: "str"},
     )
 
+    unknown_df = extract_unknown_answers(df, ans_col)
+
     print(df.value_counts(ans_col, dropna=False))
     df = keep_only_valid_and_known_answers(df, ans_col)
     print(df.value_counts(ans_col, dropna=False))
@@ -30,7 +34,12 @@ def standard_analysis_single_token_response(
     save_to_dir = f"single token/{title.lower()}"
 
     if "graphs" in show:
+        set_style()
+
         visualize_all(df, entropy_col, ans_correct_col, model_name=title, save_to=f"{save_to_dir}/entropy")
+
+        if len(unknown_df) > 0:
+            visualize_all(unknown_df, entropy_col, None, model_name=title, save_to=f"{save_to_dir}/entropy_of_unknown")
 
         visualize_all(
             df,
@@ -39,6 +48,7 @@ def standard_analysis_single_token_response(
             model_name=title,
             x_label="Education level",
             save_to=f"{save_to_dir}/edu_level",
+            bins=len(valid_education_levels),
         )
 
         visualize_all(
@@ -48,6 +58,7 @@ def standard_analysis_single_token_response(
             model_name=title,
             x_label="Reasoning score",
             save_to=f"{save_to_dir}/reasoning_score",
+            bins=3,
         )
 
     if "tables" in show:

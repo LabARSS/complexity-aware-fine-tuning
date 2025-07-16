@@ -28,5 +28,5 @@ estimate_dataset(
     get_question_from_row=lambda row: row["question"],
     get_options_from_row=lambda row: ast.literal_eval(row["options"]),
     check_answer_correct=check_answer_correct_mmlu,
-    batch_size=256
+    batch_size=256,
 )

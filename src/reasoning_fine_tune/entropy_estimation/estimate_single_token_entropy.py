@@ -88,7 +88,6 @@ def estimate_dataset(
 
     batch = next(iter(dataloader))
 
-
     pbar = tqdm(dataloader)
     for batch_idx, batch in enumerate(pbar):
         gc.collect()
@@ -136,9 +135,9 @@ def estimate_dataset(
                 print(
                     f"Answer: {answer}\nEntropy: {df.at[row_idx, field_entropy_value]}\nis_correct: {df.at[row_idx, field_ans_correct]}\n"
                 )
-        
+
         total = batch_idx * batch_size + len(answer_batch)
-        pbar.set_description(f"accuracy={correct_answers/total:.2f} / invalid formatting={invalid_formatting}")
+        pbar.set_description(f"accuracy={correct_answers / total:.2f} / invalid formatting={invalid_formatting}")
 
     df.to_csv(out_filename, sep="\t", index=False)
     print(f"Processed dataset {out_filename}. Total entries: {df.shape[0]}. Invalid formatting: {invalid_formatting}")
