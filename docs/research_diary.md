@@ -1,0 +1,4 @@
+# Research diary
+
+- Realized we should not have used "entropy with fallback" (the one where we allow the model to answer "I do not know" (IDK)) as a complexity metric to split the dataset. Complexity of IDK answers is open to interpretation, which is a problem. Too much uncertainty. Ironic, isn't it? At the moment, we simply discard IDK answers from the final split which makes us loose ~2k entries (15%-ish of the entire dataset). If we want to do more splits, it is a lot. Migrating to plain single-token entropy.
+- It was a terrible idea to use numerical option IDs. MMLU-Pro could have 10 options for some questions. "10" is 2 tokens, which complicates entropy calculation, answer generation and validation. Migrating to letter-based option IDs. 
