@@ -32,7 +32,8 @@ What is missing:
    1. Analyze much smaller data chunks. Do more granular splitting.
       1. In the light of [POLARIS](https://hkunlp.github.io/blog/2025/Polaris/), we need to see if we should be discarding easy questions instead of doing SFT on them.
    2. Analyze the shift in the complexity after one cycle of training. Apply pipeline recursively until we stop seeing the shift.
-   3. Replace training on the distilled CoT with RL.
-   4. Add RL penalty on the length of the reasoning chain based on the question complexity.
+   3. Add another dataset.
+   4. Replace training on the distilled CoT with RL.
+   5. Add RL penalty on the length of the reasoning chain based on the question complexity.
 3. Seek a better complexity metric
    1. Experiment with semantically-meaningful CoT aggregates: leave only nouns and verbs, discard "a", "the" and other high-confidence/low-signal tokens, etc.
