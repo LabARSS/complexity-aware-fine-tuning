@@ -24,6 +24,7 @@ Other datasets are included in the repo and also published on Huggingface:
 
 ## Cite
 
+```
 @misc{goncharov2025complexityawarefinetuning,
       title={Complexity-aware fine-tuning}, 
       author={Andrey Goncharov and Daniil Vyazhev and Petr Sychev and Edvard Khalafyan and Alexey Zaytsev},
@@ -33,3 +34,4 @@ Other datasets are included in the repo and also published on Huggingface:
       primaryClass={cs.LG},
       url={https://arxiv.org/abs/2506.21220}, 
 }
+```
