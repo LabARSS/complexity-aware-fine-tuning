@@ -18,6 +18,7 @@ def split_into_even_chunks(
         # Python (and pandas for that matter) is OK with end index to be out of bounds
         end_idx = start_idx + chunk_len
         chunk = sorted_df.iloc[start_idx:end_idx]
+        chunk.reset_index(drop=True, inplace=True)
         chunks.append(chunk)
 
     return chunks
