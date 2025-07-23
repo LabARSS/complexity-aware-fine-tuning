@@ -1,3 +1,4 @@
+import numpy as np
 from pandas import DataFrame
 
 from reasoning_fine_tune.utils.validation import keep_only_valid_and_known_answers
@@ -22,3 +23,13 @@ def split_into_even_chunks(
         chunks.append(chunk)
 
     return chunks
+
+
+def split_chunk_into_train_test(chunk: DataFrame, test_allocation: float):
+    chunk_len = len(chunk)
+    test_idx = np.random.choice(chunk_len, round(chunk_len * test_allocation), replace=False)
+
+    test_df = chunk.iloc[test_idx]
+    train_df = chunk.drop(test_idx)
+
+    return train_df, test_df
