@@ -17,7 +17,7 @@ from reasoning_fine_tune.utils.seed import set_seed
 
 BATCH_SIZE = 4
 LR = 1e-5
-EPOCHS = 20
+EPOCHS = 30
 
 
 def preprocess_logits_for_metrics(logits, labels):
