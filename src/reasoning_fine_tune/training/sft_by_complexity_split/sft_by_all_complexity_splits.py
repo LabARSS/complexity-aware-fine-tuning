@@ -27,10 +27,10 @@ def train_sft_by_all_complexity_splits(
         split_out_path = Path(out_path).joinpath(f"g{i}")
         print("train_sft_by_complexity_split", train_df_path)
         reset_memory_after_completion(
-            train_sft_by_complexity_split, 
+            train_sft_by_complexity_split,
             out_path=split_out_path,
             model_id=model_id,
             train_df_path=train_df_path,
             test_df_paths=test_df_paths,
-            training_kwargs=training_kwargs
+            training_kwargs=training_kwargs,
         )

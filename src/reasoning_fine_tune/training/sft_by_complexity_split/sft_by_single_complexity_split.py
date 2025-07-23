@@ -14,7 +14,6 @@ from reasoning_fine_tune.utils.device import DEVICE_MAP
 from reasoning_fine_tune.utils.last_checkpoint_dir import get_last_checkpoint_dir
 from reasoning_fine_tune.utils.prepare_dataset import prepare_dataset
 from reasoning_fine_tune.utils.seed import set_seed
-from reasoning_fine_tune.utils.training_memory_sandbox import reset_memory_after_completion
 
 BATCH_SIZE = 4
 LR = 1e-5

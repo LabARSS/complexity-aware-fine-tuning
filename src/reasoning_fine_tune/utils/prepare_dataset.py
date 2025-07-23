@@ -1,5 +1,7 @@
 from datasets import Dataset
 
+from reasoning_fine_tune.prompts.mmlu_option_ids import option_ids
+
 
 def prepare_dataset(tokenizer, get_sys_prompt, get_user_prompt, df, mask_input=False):
     df["sys_prompt"] = df.apply(get_sys_prompt, axis=1)
@@ -16,7 +18,7 @@ def prepare_dataset(tokenizer, get_sys_prompt, get_user_prompt, df, mask_input=F
             return_dict=True,
         )
 
-        answer_id = tokenizer.encode(str(row["answer_index"] + 1), add_special_tokens=False)[0]
+        answer_id = tokenizer.encode(option_ids[int(row["answer_index"])], add_special_tokens=False)[0]
 
         input_ids = tokenized["input_ids"] + [answer_id]
         attention_mask = tokenized["attention_mask"] + [1]
