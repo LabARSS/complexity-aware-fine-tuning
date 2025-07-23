@@ -1,6 +1,5 @@
 import ast
 import subprocess
-from pathlib import Path
 
 import pandas as pd
 from datasets import Dataset
@@ -102,8 +101,6 @@ def _train_sft_by_complexity_split(out_path, model_id, train_df_path, test_df_pa
         tokenizer=tokenizer, padding=True, pad_to_multiple_of=8, return_tensors="pt"
     )
 
-    output_dir = Path(__file__).parent.joinpath("../../../artifacts/sft_by_complexity_split").joinpath(out_path)
-
     model = AutoModelForCausalLM.from_pretrained(model_id, device_map=DEVICE_MAP)
     inferred_device_map = model.hf_device_map
     print("\nInferred Device Map:", inferred_device_map)
@@ -111,7 +108,7 @@ def _train_sft_by_complexity_split(out_path, model_id, train_df_path, test_df_pa
     training_args = TrainingArguments(
         seed=42,
         data_seed=42,
-        output_dir=str(output_dir),
+        output_dir=out_path,
         per_device_train_batch_size=BATCH_SIZE,
         per_device_eval_batch_size=BATCH_SIZE,
         bf16=True,
@@ -141,7 +138,7 @@ def _train_sft_by_complexity_split(out_path, model_id, train_df_path, test_df_pa
 
     trainer.train()
 
-    return get_last_checkpoint_dir(output_dir)
+    return get_last_checkpoint_dir(out_path)
 
 
 @reset_memory_after_completion

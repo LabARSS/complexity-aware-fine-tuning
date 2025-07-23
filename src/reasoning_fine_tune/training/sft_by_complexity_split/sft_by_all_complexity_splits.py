@@ -8,7 +8,9 @@ TRAIN_POSTFIX = "_train.tsv"
 TEST_POSTFIX = "_test.tsv"
 
 
-def group_train_sft_by_complexity_split(data_folder_path: str, out_path: str, model_id: str, training_kwargs):
+def train_sft_by_all_complexity_splits(
+    data_folder_path: str, out_path: str, model_id: str, training_kwargs: dict | None = None
+):
     p = Path(data_folder_path)
 
     if not p.is_dir():
