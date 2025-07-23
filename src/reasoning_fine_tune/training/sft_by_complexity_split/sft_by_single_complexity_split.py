@@ -36,7 +36,10 @@ def get_user_prompt(row):
     return prompts.single_token_answer_prompt(question, options)
 
 
-def _train_sft_by_complexity_split(out_path, model_id, train_df_path, test_df_paths, training_kwargs):
+def train_sft_by_complexity_split(out_path, model_id, train_df_path, test_df_paths, training_kwargs):
+    if training_kwargs is None:
+        training_kwargs = {}
+
     set_seed()
 
     print(f"Using device: {DEVICE_MAP}")
@@ -93,7 +96,7 @@ def _train_sft_by_complexity_split(out_path, model_id, train_df_path, test_df_pa
 
     print("Dataset samples")
     print(train_ds[0])
-    for test_ds in test_ds_dict.items():
+    for test_ds in test_ds_dict.values():
         print(test_ds[0])
 
     tokenizer.pad_token = tokenizer.eos_token
@@ -139,8 +142,3 @@ def _train_sft_by_complexity_split(out_path, model_id, train_df_path, test_df_pa
     trainer.train()
 
     return get_last_checkpoint_dir(out_path)
-
-
-@reset_memory_after_completion
-def train_sft_by_complexity_split(*args, **kwargs):
-    return _train_sft_by_complexity_split(*args, **kwargs)
