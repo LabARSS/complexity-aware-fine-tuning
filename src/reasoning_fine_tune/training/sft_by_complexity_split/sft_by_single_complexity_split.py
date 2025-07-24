@@ -2,7 +2,7 @@ import ast
 import subprocess
 
 import pandas as pd
-from datasets import Dataset
+from datasets import Dataset, concatenate_datasets
 from transformers.data.data_collator import DataCollatorForTokenClassification
 from transformers.models.auto.modeling_auto import AutoModelForCausalLM
 from transformers.models.auto.tokenization_auto import AutoTokenizer
@@ -92,6 +92,7 @@ def train_sft_by_complexity_split(out_path, model_id, train_df_path, test_df_pat
         )
         for i, test_df in enumerate(test_dfs)
     }
+    test_ds_dict["combined"] = concatenate_datasets(list(test_ds_dict.values()))
 
     print("Dataset samples")
     print(train_ds[0])
