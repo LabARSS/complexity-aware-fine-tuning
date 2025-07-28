@@ -1,5 +1,6 @@
 import ast
 import subprocess
+from pathlib import Path
 
 import pandas as pd
 from datasets import Dataset, concatenate_datasets
@@ -20,6 +21,13 @@ LR = 1e-5
 EPOCHS = 30
 
 
+def directory_is_empty(directory: str) -> bool:
+    p = Path(directory)
+    if not p.is_dir():
+        raise Exception("Not a directory!")
+    return not any(p.iterdir())
+
+
 def preprocess_logits_for_metrics(logits, labels):
     return logits.argmax(dim=-1)
 
@@ -36,6 +44,10 @@ def get_user_prompt(row):
 
 
 def train_sft_by_complexity_split(out_path, model_id, train_df_path, test_df_paths, training_kwargs):
+    if not directory_is_empty(out_path):
+        print("train_sft_by_complexity_split -> out_path not empty", out_path)
+        return None
+
     if training_kwargs is None:
         training_kwargs = {}
 
