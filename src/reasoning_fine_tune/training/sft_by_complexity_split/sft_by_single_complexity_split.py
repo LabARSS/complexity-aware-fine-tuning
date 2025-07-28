@@ -23,6 +23,8 @@ EPOCHS = 30
 
 def directory_is_empty(directory: str) -> bool:
     p = Path(directory)
+    if not p.exists():
+        return True
     if not p.is_dir():
         raise Exception("Not a directory!")
     return not any(p.iterdir())
