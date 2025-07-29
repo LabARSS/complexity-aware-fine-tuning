@@ -16,7 +16,7 @@ from reasoning_fine_tune.utils.last_checkpoint_dir import get_last_checkpoint_di
 from reasoning_fine_tune.utils.prepare_dataset import prepare_dataset
 from reasoning_fine_tune.utils.seed import set_seed
 
-BATCH_SIZE = 4
+BATCH_SIZE = 2
 LR = 1e-5
 EPOCHS = 30
 
