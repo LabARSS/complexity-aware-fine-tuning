@@ -5,6 +5,7 @@ from pathlib import Path
 import pandas as pd
 from datasets import Dataset, concatenate_datasets
 from transformers.data.data_collator import DataCollatorForTokenClassification
+from transformers.generation.configuration_utils import GenerationConfig
 from transformers.models.auto.modeling_auto import AutoModelForCausalLM
 from transformers.models.auto.tokenization_auto import AutoTokenizer
 from transformers.training_args_seq2seq import Seq2SeqTrainingArguments
@@ -29,10 +30,6 @@ def directory_is_empty(directory: str) -> bool:
     if not p.is_dir():
         raise Exception("Not a directory!")
     return not any(p.iterdir())
-
-
-def preprocess_logits_for_metrics(logits, labels):
-    return logits.argmax(dim=-1)
 
 
 def get_sys_prompt(row):
@@ -71,13 +68,15 @@ def train_sft_by_complexity_split(out_path, model_id, train_df_path, test_df_pat
 
     print(subprocess.run(["nvidia-smi"], capture_output=True, text=True).stdout)
 
-    tokenizer = AutoTokenizer.from_pretrained(model_id)
+    tokenizer = AutoTokenizer.from_pretrained(model_id, padding_side='left')
 
-    def compute_metrics(eval_pred, losses):
-        if losses is None:
-            # CoT eval
-            predictions, labels = eval_pred
+    def compute_metrics(eval_pred, is_cot_eval):
+        predictions, labels, inputs = eval_pred.predictions, eval_pred.label_ids, eval_pred.inputs
 
+        if is_cot_eval:
+            # labels are padded to the length of input and padding is from the left
+            labels = labels[..., inputs.shape[1] - 1]
+            predictions = predictions[:,inputs.shape[1]:]
             decoded_preds = tokenizer.batch_decode(predictions, skip_special_tokens=True)
             decoded_labels = tokenizer.batch_decode(labels, skip_special_tokens=True)
 
@@ -91,17 +90,14 @@ def train_sft_by_complexity_split(out_path, model_id, train_df_path, test_df_pat
                 if ans_start != -1 and ans_end != -1:
                     extracted_preds.append(p[ans_start:ans_end])
                 else:
-                    extracted_preds.append(None)
+                    extracted_preds.append('')
 
-            matches = [p == l for p, l in zip(extracted_preds, decoded_labels)]
+            matches = [p.lower() == l.lower() for p, l in zip(extracted_preds, decoded_labels)]
 
             return {"accuracy": sum(matches) / len(matches)}
         else:
-            # Towenwise eval
-            predictions, labels = eval_pred
-
             labels = labels[..., 1:]
-            predictions = predictions[..., :-1]
+            predictions = predictions.argmax(axis=-1)[..., :-1]
 
             mask = (labels != -100) & (labels != tokenizer.eos_token_id)
             correct = (predictions == labels) & mask
@@ -172,6 +168,16 @@ def train_sft_by_complexity_split(out_path, model_id, train_df_path, test_df_pat
     inferred_device_map = model.hf_device_map
     print("\nInferred Device Map:", inferred_device_map)
 
+    generation_config = GenerationConfig.from_pretrained(
+        model_id,
+        temperature=None,
+        top_p=None,
+        top_k=None,
+        do_sample=False,
+        max_length=1024,
+    )
+    generation_config.do_sample = False
+
     training_args = Seq2SeqTrainingArguments(
         seed=42,
         data_seed=42,
@@ -191,8 +197,11 @@ def train_sft_by_complexity_split(out_path, model_id, train_df_path, test_df_pat
         num_train_epochs=EPOCHS,
         lr_scheduler_type="linear",
         learning_rate=LR,
+        remove_unused_columns=False,
+        include_for_metrics=['inputs'],
+        generation_num_beams=1,
+        generation_config=generation_config,
         **training_kwargs,
-        include_for_metrics=["loss"],
     )
     trainer = CoTEvalTrainer(
         model=model,
@@ -201,7 +210,7 @@ def train_sft_by_complexity_split(out_path, model_id, train_df_path, test_df_pat
         eval_dataset=test_combined_ds_dict,
         data_collator=data_collator,
         compute_metrics=compute_metrics,
-        preprocess_logits_for_metrics=preprocess_logits_for_metrics,
+        processing_class=tokenizer
     )
 
     trainer.train()
