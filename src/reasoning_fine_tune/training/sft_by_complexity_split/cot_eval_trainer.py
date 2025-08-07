@@ -6,6 +6,15 @@ from transformers.trainer_seq2seq import Seq2SeqTrainer
 
 
 class CoTEvalTrainer(Seq2SeqTrainer):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        self.is_cot_eval = False
+        compute_metrics = self.compute_metrics
+        def compute_metrics_enhanced(eval_pred):
+            return compute_metrics(eval_pred, self.is_cot_eval)
+        self.compute_metrics = compute_metrics_enhanced
+
     def prediction_step(
         self,
         model: nn.Module,
@@ -14,14 +23,17 @@ class CoTEvalTrainer(Seq2SeqTrainer):
         ignore_keys: Optional[list[str]] = None,
         **gen_kwargs,
     ) -> tuple[Optional[float], Optional[torch.Tensor], Optional[torch.Tensor]]:
-        cot_labels = None
-        if "cot_labels" in inputs:
-            cot_labels = inputs.pop("cot_labels")
-
-        self.args.predict_with_generate = True
+        self.is_cot_eval = False
+        if 'cot' in inputs:
+            self.is_cot_eval = True
+            inputs.pop('cot')
+            self.args.predict_with_generate = True
+        
         loss, generated_tokens, labels = super().prediction_step(
             model, inputs, prediction_loss_only, ignore_keys, **gen_kwargs
         )
+
         self.args.predict_with_generate = False
 
-        return None, generated_tokens, cot_labels or labels
+        return None if self.is_cot_eval else loss, generated_tokens, labels
+    

@@ -64,7 +64,7 @@ def prepare_dataset_cot_eval(tokenizer, get_sys_prompt, get_user_prompt, df):
 
         labels = [answer_id]
 
-        return {"input_ids": input_ids, "attention_mask": attention_mask, "cot_labels": labels}
+        return {"input_ids": input_ids, "attention_mask": attention_mask, "labels": labels, "cot": True}
 
     dataset = Dataset.from_pandas(df)
 
