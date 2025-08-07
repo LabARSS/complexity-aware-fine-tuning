@@ -40,3 +40,38 @@ def prepare_dataset(tokenizer, get_sys_prompt, get_user_prompt, df, mask_input=F
     )
 
     return processed_ds
+
+
+def prepare_dataset_cot_eval(tokenizer, get_sys_prompt, get_user_prompt, df):
+    df["sys_prompt"] = df.apply(get_sys_prompt, axis=1)
+    df["user_prompt"] = df.apply(get_user_prompt, axis=1)
+
+    def process_row(row):
+        tokenized = tokenizer.apply_chat_template(
+            [
+                {"role": "system", "content": row["sys_prompt"]},
+                {"role": "user", "content": row["user_prompt"]},
+            ],
+            tokenize=True,
+            add_generation_prompt=True,
+            return_dict=True,
+        )
+
+        answer_id = tokenizer.encode(option_ids[int(row["answer_index"])], add_special_tokens=False)[0]
+
+        input_ids = tokenized["input_ids"]
+        attention_mask = tokenized["attention_mask"]
+
+        labels = [answer_id]
+
+        return {"input_ids": input_ids, "attention_mask": attention_mask, "cot_labels": labels}
+
+    dataset = Dataset.from_pandas(df)
+
+    processed_ds = dataset.map(
+        process_row,
+        num_proc=4,
+        remove_columns=dataset.column_names,
+    )
+
+    return processed_ds
