@@ -189,7 +189,7 @@ def train_sft_by_complexity_split(out_path, model_id, train_df_path, test_df_pat
         save_only_model=True,
         eval_on_start=True,
         num_train_epochs=EPOCHS,
-        lr_scheduler_type="constant",
+        lr_scheduler_type="linear",
         learning_rate=LR,
         **training_kwargs,
         include_for_metrics=["loss"],
