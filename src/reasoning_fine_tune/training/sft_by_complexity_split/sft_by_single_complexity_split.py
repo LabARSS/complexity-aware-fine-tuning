@@ -204,6 +204,7 @@ def train_sft_by_complexity_split(out_path, model_id, train_df_path, test_df_pat
         bf16_full_eval=True,
         logging_strategy="epoch",
         eval_strategy="epoch",
+        batch_eval_metrics=True,
         report_to="none",
         save_strategy="epoch",
         overwrite_output_dir=True,
