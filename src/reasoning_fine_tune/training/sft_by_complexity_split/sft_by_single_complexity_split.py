@@ -18,7 +18,8 @@ from reasoning_fine_tune.utils.last_checkpoint_dir import get_last_checkpoint_di
 from reasoning_fine_tune.utils.prepare_dataset import prepare_dataset, prepare_dataset_cot_eval
 from reasoning_fine_tune.utils.seed import set_seed
 
-BATCH_SIZE = 2
+TRAIN_BATCH_SIZE = 2
+EVAL_BATCH_SIZE = 32
 LR = 1e-5
 EPOCHS = 30
 
@@ -198,8 +199,8 @@ def train_sft_by_complexity_split(out_path, model_id, train_df_path, test_df_pat
         seed=42,
         data_seed=42,
         output_dir=out_path,
-        per_device_train_batch_size=BATCH_SIZE,
-        per_device_eval_batch_size=BATCH_SIZE,
+        per_device_train_batch_size=TRAIN_BATCH_SIZE,
+        per_device_eval_batch_size=EVAL_BATCH_SIZE,
         bf16=True,
         bf16_full_eval=True,
         logging_strategy="epoch",
