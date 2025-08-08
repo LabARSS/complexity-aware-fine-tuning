@@ -191,7 +191,7 @@ def train_sft_by_complexity_split(out_path, model_id, train_df_path, test_df_pat
         top_p=None,
         top_k=None,
         do_sample=False,
-        max_length=1024,
+        max_new_tokens=1024,
     )
     generation_config.do_sample = False
 
