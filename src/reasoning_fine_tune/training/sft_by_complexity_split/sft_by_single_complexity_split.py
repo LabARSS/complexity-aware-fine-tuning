@@ -68,15 +68,20 @@ def train_sft_by_complexity_split(out_path, model_id, train_df_path, test_df_pat
 
     print(subprocess.run(["nvidia-smi"], capture_output=True, text=True).stdout)
 
-    tokenizer = AutoTokenizer.from_pretrained(model_id, padding_side='left')
+    tokenizer = AutoTokenizer.from_pretrained(model_id, padding_side="left")
 
-    def compute_metrics(eval_pred, is_cot_eval):
+    metrics_accum_correct = 0
+    metrics_accum_total = 0
+
+    def compute_metrics(eval_pred, compute_result, is_cot_eval):
+        nonlocal metrics_accum_correct, metrics_accum_total
+
         predictions, labels, inputs = eval_pred.predictions, eval_pred.label_ids, eval_pred.inputs
 
         if is_cot_eval:
             # labels are padded to the length of input and padding is from the left
             labels = labels[..., inputs.shape[1] - 1]
-            predictions = predictions[:,inputs.shape[1]:]
+            predictions = predictions[:, inputs.shape[1] :]
             decoded_preds = tokenizer.batch_decode(predictions, skip_special_tokens=True)
             decoded_labels = tokenizer.batch_decode(labels, skip_special_tokens=True)
 
@@ -90,11 +95,13 @@ def train_sft_by_complexity_split(out_path, model_id, train_df_path, test_df_pat
                 if ans_start != -1 and ans_end != -1:
                     extracted_preds.append(p[ans_start:ans_end])
                 else:
-                    extracted_preds.append('')
+                    extracted_preds.append("")
 
             matches = [p.lower() == l.lower() for p, l in zip(extracted_preds, decoded_labels)]
 
-            return {"accuracy": sum(matches) / len(matches)}
+            metrics_accum_correct += sum(matches)
+            metrics_accum_total += len(matches)
+
         else:
             labels = labels[..., 1:]
             predictions = predictions.argmax(axis=-1)[..., :-1]
@@ -102,9 +109,18 @@ def train_sft_by_complexity_split(out_path, model_id, train_df_path, test_df_pat
             mask = (labels != -100) & (labels != tokenizer.eos_token_id)
             correct = (predictions == labels) & mask
 
-            accuracy = correct.sum() / mask.sum()
+            metrics_accum_correct += correct.sum()
+            metrics_accum_total += mask.sum()
 
-            return {"accuracy": accuracy}
+        if not compute_result:
+            return None
+
+        accuracy = metrics_accum_correct / metrics_accum_total
+        # Reset for next dataset
+        metrics_accum_correct = 0
+        metrics_accum_total = 0
+
+        return {"accuracy": accuracy}
 
     train_df = pd.read_csv(
         train_df_path,
@@ -198,7 +214,7 @@ def train_sft_by_complexity_split(out_path, model_id, train_df_path, test_df_pat
         lr_scheduler_type="linear",
         learning_rate=LR,
         remove_unused_columns=False,
-        include_for_metrics=['inputs'],
+        include_for_metrics=["inputs"],
         generation_num_beams=1,
         generation_config=generation_config,
         **training_kwargs,
@@ -210,7 +226,7 @@ def train_sft_by_complexity_split(out_path, model_id, train_df_path, test_df_pat
         eval_dataset=test_combined_ds_dict,
         data_collator=data_collator,
         compute_metrics=compute_metrics,
-        processing_class=tokenizer
+        processing_class=tokenizer,
     )
 
     trainer.train()
