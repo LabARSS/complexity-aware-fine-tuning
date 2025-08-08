@@ -76,7 +76,7 @@ def train_sft_by_complexity_split(out_path, model_id, train_df_path, test_df_pat
     def compute_metrics(eval_pred, compute_result, is_cot_eval):
         nonlocal metrics_accum_correct, metrics_accum_total
 
-        predictions, labels, inputs = eval_pred.predictions, eval_pred.label_ids, eval_pred.inputs
+        predictions, labels, inputs = eval_pred.predictions, eval_pred.label_ids, eval_pred.inputs["input_ids"]
 
         if is_cot_eval:
             # labels are padded to the length of input and padding is from the left
@@ -104,7 +104,7 @@ def train_sft_by_complexity_split(out_path, model_id, train_df_path, test_df_pat
 
         else:
             labels = labels[..., 1:]
-            predictions = predictions.argmax(axis=-1)[..., :-1]
+            predictions = predictions.argmax(dim=-1)[..., :-1]
 
             mask = (labels != -100) & (labels != tokenizer.eos_token_id)
             correct = (predictions == labels) & mask
