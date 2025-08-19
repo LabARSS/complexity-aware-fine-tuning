@@ -73,9 +73,13 @@ def train_sft_by_complexity_split(out_path, model_id, train_df_path, test_df_pat
 
     metrics_accum_correct = 0
     metrics_accum_total = 0
+    incorrect_answers: list = []
 
-    def compute_metrics(eval_pred, compute_result, is_cot_eval):
-        nonlocal metrics_accum_correct, metrics_accum_total
+    def compute_metrics(eval_pred, compute_result, is_cot_eval, question_ids: list[str] | None):
+        nonlocal metrics_accum_correct, metrics_accum_total, incorrect_answers
+
+        assert isinstance(question_ids, list)
+        assert len(question_ids) != 0
 
         predictions, labels, inputs = eval_pred.predictions, eval_pred.label_ids, eval_pred.inputs["input_ids"]
 
@@ -103,6 +107,16 @@ def train_sft_by_complexity_split(out_path, model_id, train_df_path, test_df_pat
             metrics_accum_correct += sum(matches)
             metrics_accum_total += len(matches)
 
+            for i, is_match in enumerate(matches):
+                if is_match:
+                    continue
+
+                incorrect_pred = decoded_preds[i]
+                incorrect_question_id = question_ids[i]
+                incorrect_answers.append(
+                    {"is_cot_eval": is_cot_eval, "output": incorrect_pred, "question_id": incorrect_question_id}
+                )
+
         else:
             labels = labels[..., 1:]
             predictions = predictions.argmax(dim=-1)[..., :-1]
@@ -113,15 +127,27 @@ def train_sft_by_complexity_split(out_path, model_id, train_df_path, test_df_pat
             metrics_accum_correct += correct.sum()
             metrics_accum_total += mask.sum()
 
+            for i, is_match in enumerate(correct):
+                if is_match:
+                    continue
+
+                incorrect_pred = tokenizer.decode(predictions[i])
+                incorrect_question_id = question_ids[i]
+                incorrect_answers.append(
+                    {"is_cot_eval": is_cot_eval, "output": incorrect_pred, "question_id": incorrect_question_id}
+                )
+
         if not compute_result:
             return None
 
         accuracy = metrics_accum_correct / metrics_accum_total
+        incorrect_answers_res = incorrect_answers
         # Reset for next dataset
         metrics_accum_correct = 0
         metrics_accum_total = 0
+        incorrect_answers = []
 
-        return {"accuracy": accuracy}
+        return {"accuracy": accuracy, "incorrect_answers": incorrect_answers_res}
 
     train_df = pd.read_csv(
         train_df_path,
@@ -229,6 +255,7 @@ def train_sft_by_complexity_split(out_path, model_id, train_df_path, test_df_pat
         data_collator=data_collator,
         compute_metrics=compute_metrics,
         processing_class=tokenizer,
+        invalid_answers_save_path=str(Path(out_path).joinpath("incorrect_answers.tsv")),
     )
 
     trainer.train()
