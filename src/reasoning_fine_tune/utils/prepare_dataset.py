@@ -29,7 +29,9 @@ def prepare_dataset(tokenizer, get_sys_prompt, get_user_prompt, df, mask_input=F
             for i in range(len(tokenized["input_ids"])):
                 labels[i] = -100
 
-        return {"input_ids": input_ids, "attention_mask": attention_mask, "labels": labels}
+        question_id = row["question_id"]
+
+        return {"input_ids": input_ids, "attention_mask": attention_mask, "labels": labels, "question_id": question_id}
 
     dataset = Dataset.from_pandas(df)
 
@@ -64,7 +66,15 @@ def prepare_dataset_cot_eval(tokenizer, get_sys_prompt, get_user_prompt, df):
 
         labels = [answer_id]
 
-        return {"input_ids": input_ids, "attention_mask": attention_mask, "labels": labels, "cot": True}
+        question_id = row["question_id"]
+
+        return {
+            "input_ids": input_ids,
+            "attention_mask": attention_mask,
+            "labels": labels,
+            "cot": True,
+            "question_id": question_id,
+        }
 
     dataset = Dataset.from_pandas(df)
 
