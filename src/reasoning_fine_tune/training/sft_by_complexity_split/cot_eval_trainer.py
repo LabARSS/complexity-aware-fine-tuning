@@ -1,6 +1,7 @@
 import os
 from typing import Any, Optional, Union
 
+import numpy as np
 import pandas as pd
 import torch
 from torch import nn
@@ -16,6 +17,8 @@ class CoTEvalTrainer(Seq2SeqTrainer):
         if os.path.exists(self.invalid_answers_save_path):
             os.remove(self.invalid_answers_save_path)
         self.file_initialized = False
+
+        self.skip_eval_datasets = {}
 
         self.is_cot_eval = False
         self.question_ids = []
@@ -51,6 +54,14 @@ class CoTEvalTrainer(Seq2SeqTrainer):
         return None if self.is_cot_eval else loss, generated_tokens, labels
 
     def evaluation_loop(self, *args, **kwargs) -> EvalLoopOutput:
+        metric_key_prefix = kwargs["metric_key_prefix"]
+        epoch = self.state.epoch
+
+        if metric_key_prefix in self.skip_eval_datasets:
+            last_epoch = self.skip_eval_datasets[metric_key_prefix]
+            print(f"Skipping eval on {metric_key_prefix} at epoch {epoch}! Last executed epoch = {last_epoch}.")
+            return EvalLoopOutput(predictions=np.array([]), label_ids=None, metrics={"accuracy": 0}, num_samples=None)
+
         eval_loop_output = super().evaluation_loop(*args, **kwargs)
 
         assert eval_loop_output.metrics is not None
@@ -59,9 +70,6 @@ class CoTEvalTrainer(Seq2SeqTrainer):
 
         incorrect_answers = eval_loop_output.metrics.pop("incorrect_answers")
         assert isinstance(incorrect_answers, list)
-
-        metric_key_prefix = kwargs["metric_key_prefix"]
-        epoch = self.state.epoch
 
         for item in incorrect_answers:
             item["dataset"] = metric_key_prefix
@@ -72,3 +80,8 @@ class CoTEvalTrainer(Seq2SeqTrainer):
             self.invalid_answers_save_path, sep="\t", mode="a", header=not self.file_initialized, index=False
         )
         self.file_initialized = True
+
+        if eval_loop_output.metrics["accuracy"] == 0:
+            self.skip_eval_datasets[metric_key_prefix] = epoch
+
+        return eval_loop_output
