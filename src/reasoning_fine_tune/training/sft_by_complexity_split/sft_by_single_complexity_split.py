@@ -84,8 +84,8 @@ def train_sft_by_complexity_split(out_path, model_id, train_df_path, test_df_pat
         predictions, labels, inputs = eval_pred.predictions, eval_pred.label_ids, eval_pred.inputs["input_ids"]
 
         if is_cot_eval:
-            # labels are padded from the left
-            labels = labels[..., -1:]
+            # labels are padded from both left and right (weird, I know)
+            labels = labels[..., inputs.shape[1] - 1]
             predictions = predictions[:, inputs.shape[1] :]
             decoded_preds = tokenizer.batch_decode(predictions, skip_special_tokens=True)
             decoded_labels = tokenizer.batch_decode(labels, skip_special_tokens=True)
