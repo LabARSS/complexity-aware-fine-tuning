@@ -75,7 +75,7 @@ def train_sft_by_complexity_split(out_path, model_id, train_df_path, test_df_pat
     metrics_accum_total = 0
     incorrect_answers: list = []
 
-    def compute_metrics(eval_pred, compute_result, is_cot_eval, question_ids: list[str] | None):
+    def compute_metrics(eval_pred, compute_result, is_cot_eval, question_ids: list | None):
         nonlocal metrics_accum_correct, metrics_accum_total, incorrect_answers
 
         assert isinstance(question_ids, list)
@@ -118,14 +118,13 @@ def train_sft_by_complexity_split(out_path, model_id, train_df_path, test_df_pat
                 )
 
         else:
-            labels = labels[..., 1:]
-            predictions = predictions.argmax(dim=-1)[..., :-1]
+            labels = labels[..., -1]
+            predictions = predictions.argmax(dim=-1)[..., -2]
 
-            mask = (labels != -100) & (labels != tokenizer.eos_token_id)
-            correct = (predictions == labels) & mask
+            correct = predictions == labels
 
             metrics_accum_correct += correct.sum()
-            metrics_accum_total += mask.sum()
+            metrics_accum_total += len(labels)
 
             for i, is_match in enumerate(correct):
                 if is_match:
@@ -136,6 +135,7 @@ def train_sft_by_complexity_split(out_path, model_id, train_df_path, test_df_pat
                 incorrect_answers.append(
                     {"is_cot_eval": is_cot_eval, "output": incorrect_pred, "question_id": incorrect_question_id}
                 )
+                break
 
         if not compute_result:
             return None

@@ -43,7 +43,7 @@ class CoTEvalTrainer(Seq2SeqTrainer):
             inputs.pop("cot")
             self.args.predict_with_generate = True
 
-        self.question_ids = inputs.pop("question_id")
+        self.question_ids = inputs.pop("question_id").cpu().tolist()
 
         loss, generated_tokens, labels = super().prediction_step(
             model, inputs, prediction_loss_only, ignore_keys, **gen_kwargs
@@ -56,19 +56,21 @@ class CoTEvalTrainer(Seq2SeqTrainer):
     def evaluation_loop(self, *args, **kwargs) -> EvalLoopOutput:
         metric_key_prefix = kwargs["metric_key_prefix"]
         epoch = self.state.epoch
+        prefixed_accuracy = f"{metric_key_prefix}_accuracy"
+        prefixed_incorrect_answers = f"{metric_key_prefix}_incorrect_answers"
 
         if metric_key_prefix in self.skip_eval_datasets:
             last_epoch = self.skip_eval_datasets[metric_key_prefix]
             print(f"Skipping eval on {metric_key_prefix} at epoch {epoch}! Last executed epoch = {last_epoch}.")
-            return EvalLoopOutput(predictions=np.array([]), label_ids=None, metrics={"accuracy": 0}, num_samples=None)
+            return EvalLoopOutput(predictions=np.array([]), label_ids=None, metrics={prefixed_accuracy: 0}, num_samples=None)
 
         eval_loop_output = super().evaluation_loop(*args, **kwargs)
 
         assert eval_loop_output.metrics is not None
-        assert "accuracy" in eval_loop_output.metrics
-        assert "incorrect_answers" in eval_loop_output.metrics
+        assert prefixed_accuracy in eval_loop_output.metrics
+        assert prefixed_incorrect_answers in eval_loop_output.metrics
 
-        incorrect_answers = eval_loop_output.metrics.pop("incorrect_answers")
+        incorrect_answers = eval_loop_output.metrics.pop(prefixed_incorrect_answers)
         assert isinstance(incorrect_answers, list)
 
         for item in incorrect_answers:
@@ -81,7 +83,7 @@ class CoTEvalTrainer(Seq2SeqTrainer):
         )
         self.file_initialized = True
 
-        if eval_loop_output.metrics["accuracy"] == 0:
+        if eval_loop_output.metrics[prefixed_accuracy] == 0:
             self.skip_eval_datasets[metric_key_prefix] = epoch
 
         return eval_loop_output
