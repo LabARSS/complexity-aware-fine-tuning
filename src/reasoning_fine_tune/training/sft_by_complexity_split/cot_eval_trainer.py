@@ -1,3 +1,4 @@
+import gc
 import os
 from typing import Any, Optional, Union
 
@@ -25,7 +26,10 @@ class CoTEvalTrainer(Seq2SeqTrainer):
         compute_metrics = self.compute_metrics
 
         def compute_metrics_enhanced(eval_pred, compute_result):
-            return compute_metrics(eval_pred, compute_result, self.is_cot_eval, self.question_ids)
+            out = compute_metrics(eval_pred, compute_result, self.is_cot_eval, self.question_ids)
+            gc.collect()
+            torch.cuda.empty_cache()
+            return out
 
         self.compute_metrics = compute_metrics_enhanced
 
