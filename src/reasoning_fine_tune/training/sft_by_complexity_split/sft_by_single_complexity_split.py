@@ -19,7 +19,7 @@ from reasoning_fine_tune.utils.prepare_dataset import prepare_dataset, prepare_d
 from reasoning_fine_tune.utils.seed import set_seed
 
 TRAIN_BATCH_SIZE = 2
-EVAL_BATCH_SIZE = 32
+EVAL_BATCH_SIZE = 16
 LR = 1e-5
 EPOCHS = 30
 
