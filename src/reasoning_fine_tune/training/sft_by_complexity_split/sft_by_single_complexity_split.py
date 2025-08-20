@@ -30,7 +30,7 @@ def directory_is_empty(directory: str) -> bool:
         return True
     if not p.is_dir():
         raise Exception("Not a directory!")
-    return not any(p.iterdir())
+    return not any(p.glob("*.safetensors"))
 
 
 def get_sys_prompt(row):
