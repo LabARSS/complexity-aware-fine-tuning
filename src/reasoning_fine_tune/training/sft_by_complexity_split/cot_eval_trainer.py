@@ -66,7 +66,9 @@ class CoTEvalTrainer(Seq2SeqTrainer):
         if metric_key_prefix in self.skip_eval_datasets:
             last_epoch = self.skip_eval_datasets[metric_key_prefix]
             print(f"Skipping eval on {metric_key_prefix} at epoch {epoch}! Last executed epoch = {last_epoch}.")
-            return EvalLoopOutput(predictions=np.array([]), label_ids=None, metrics={prefixed_accuracy: 0}, num_samples=None)
+            return EvalLoopOutput(
+                predictions=np.array([]), label_ids=None, metrics={prefixed_accuracy: 0}, num_samples=0
+            )
 
         eval_loop_output = super().evaluation_loop(*args, **kwargs)
 
