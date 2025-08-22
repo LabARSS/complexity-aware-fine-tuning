@@ -1,4 +1,5 @@
 import ast
+import json
 import subprocess
 from pathlib import Path
 
@@ -24,13 +25,29 @@ LR = 1e-5
 EPOCHS = 30
 
 
-def directory_is_empty(directory: str) -> bool:
+def directory_is_empty(directory: str, expected_epochs: int) -> bool:
     p = Path(directory)
     if not p.exists():
         return True
     if not p.is_dir():
         raise Exception("Not a directory!")
-    return not any(p.glob("*.safetensors"))
+
+    checkpoint_dirs = list(p.glob("checkpoint_*"))
+    if not checkpoint_dirs:
+        return True
+
+    checkpoint_dirs.sort(key=lambda x: int(x.name.split("_")[1]))
+    last_checkpoint = checkpoint_dirs[-1] if checkpoint_dirs else None
+
+    if last_checkpoint:
+        state_file = last_checkpoint / "trainer_state.json"
+        if state_file.exists():
+            with open(state_file, "r") as f:
+                state = json.load(f)
+                if int(state.get("epoch", 0)) == expected_epochs:
+                    return False
+
+    return True
 
 
 def get_sys_prompt(row):
@@ -56,7 +73,7 @@ def get_user_prompt_cot_eval(row):
 
 
 def train_sft_by_complexity_split(out_path, model_id, train_df_path, test_df_paths, training_kwargs):
-    if not directory_is_empty(out_path):
+    if not directory_is_empty(out_path, EPOCHS):
         print("train_sft_by_complexity_split -> out_path not empty", out_path)
         return None
 
