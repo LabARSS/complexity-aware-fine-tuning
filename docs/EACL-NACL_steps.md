@@ -1,4 +1,4 @@
-# EACL Progress steps
+# EACL/NACL Progress steps
 
 This document outlines the current status of experiments and steps.  
 Completed steps are marked with `[x]`, pending ones with `[ ]`.
