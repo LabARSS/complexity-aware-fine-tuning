@@ -1,12 +1,12 @@
 # EACL/NACL Progress steps
 
 This document outlines the current status of experiments and steps.  
-Completed steps are marked with `[x]`, pending ones with `[ ]`.
+Completed steps are marked with `[x]`, pending ones with `[ ]`, if task in process `[~]`.
 
 ---
 
 ## Daniil Vyazhev steps:
-- [ ] Reread our article to see what should be added/changed.
+- [~] Reread our article to see what should be added/changed.
 - [ ] SFT by cross entropy (Qwen 3B)  
 - [ ] SFT by cross entropy (Phi-4-mini)  
 - [ ] Accuracy for fine-tuning pipelines after 10 epochs for Qwen 3B
