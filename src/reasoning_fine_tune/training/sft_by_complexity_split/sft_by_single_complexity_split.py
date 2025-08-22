@@ -32,11 +32,11 @@ def directory_is_empty(directory: str, expected_epochs: int) -> bool:
     if not p.is_dir():
         raise Exception("Not a directory!")
 
-    checkpoint_dirs = list(p.glob("checkpoint_*"))
+    checkpoint_dirs = list(p.glob("checkpoint-*"))
     if not checkpoint_dirs:
         return True
 
-    checkpoint_dirs.sort(key=lambda x: int(x.name.split("_")[1]))
+    checkpoint_dirs.sort(key=lambda x: int(x.name.split("-")[1]))
     last_checkpoint = checkpoint_dirs[-1] if checkpoint_dirs else None
 
     if last_checkpoint:
