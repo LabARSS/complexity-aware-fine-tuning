@@ -27,11 +27,20 @@ Completed steps are marked with `[x]`, pending ones with `[ ]`, if task in proce
     - [ ] Train SFT anf SFT curriculum on the paraphrased dataset for 20 epochs
     - [ ] Repeat previous experiments wiht entropy for 20 epochs instead of 10
         - [ ] Train SFT without split for 20 epochs
+            - [ ] Qwen 3B
+            - [ ] Phi4 mini 
         - [ ] Train SFT curriculum for 20 epochs
+            - [ ] Qwen 3B
+            - [ ] Phi4 mini
         - [ ] Train distilled CoT without split for 20 epochs
+            - [ ] Qwen 3B
+            - [ ] Phi4 mini
         - [ ] Train alternative pipeline for 20 epochs
+            - [ ] Qwen 3B
+            - [ ] Phi4 mini
         - [ ] Train our pipeline for 20 epochs
-- [ ] To be continued...
+            - [ ] Qwen 3B
+            - [ ] Phi4 mini
 
 ---
 
