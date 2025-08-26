@@ -21,9 +21,10 @@ Completed steps are marked with `[x]`, pending ones with `[ ]`, if task in proce
 
 ## Andrey Goncharov steps:
 
-- [ ] Reread our article to see what should be added/changed.
+- [~] Reread our article to see what should be added/changed.
 - [ ] Paraphrase CoT to measure whether paraphrasing adds weight to questions.
-      
+    - [ ] Use large LLM to paraphrase medium questions 2 time and hard questions 4 times     
+    - [ ] Train SFT anf SFT curriculum on the paraphrased dataset
 - [ ] To be continued...
 
 ---
