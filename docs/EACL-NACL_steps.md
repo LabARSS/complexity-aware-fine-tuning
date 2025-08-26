@@ -24,7 +24,13 @@ Completed steps are marked with `[x]`, pending ones with `[ ]`, if task in proce
 - [~] Reread our article to see what should be added/changed.
 - [ ] Paraphrase CoT to measure whether paraphrasing adds weight to questions.
     - [ ] Use large LLM to paraphrase medium questions 2 time and hard questions 4 times     
-    - [ ] Train SFT anf SFT curriculum on the paraphrased dataset
+    - [ ] Train SFT anf SFT curriculum on the paraphrased dataset for 20 epochs
+    - [ ] Repeat previous experiments wiht entropy for 20 epochs instead of 10
+        - [ ] Train SFT without split for 20 epochs
+        - [ ] Train SFT curriculum for 20 epochs
+        - [ ] Train distilled CoT without split for 20 epochs
+        - [ ] Train alternative pipeline for 20 epochs
+        - [ ] Train our pipeline for 20 epochs
 - [ ] To be continued...
 
 ---
