@@ -2,14 +2,14 @@ import pandas as pd
 from IPython.display import display
 from transformers import AutoTokenizer
 
-from reasoning_fine_tune.analysis.join_with_masj_education_levels import join_with_masj_education_levels
-from reasoning_fine_tune.analysis.join_with_masj_reasoning_score import join_with_masj_reasoning_score
-from reasoning_fine_tune.analysis.roc_auc import calculate_roc_auc_by_category
-from reasoning_fine_tune.analysis.visualize_all import visualize_all
-from reasoning_fine_tune.prompts.estimate_education_level import valid_education_levels
-from reasoning_fine_tune.utils.graph_style import set_style
-from reasoning_fine_tune.utils.processing import extract_cot_answer_entropy_from_row, extract_cot_answer_from_row
-from reasoning_fine_tune.utils.validation import extract_unknown_answers, keep_only_valid_and_known_answers
+from core.analysis.join_with_masj_education_levels import join_with_masj_education_levels
+from core.analysis.join_with_masj_reasoning_score import join_with_masj_reasoning_score
+from core.analysis.roc_auc import calculate_roc_auc_by_category
+from core.analysis.visualize_all import visualize_all
+from core.prompts.estimate_education_level import valid_education_levels
+from core.utils.graph_style import set_style
+from core.utils.processing import extract_cot_answer_entropy_from_row, extract_cot_answer_from_row
+from core.utils.validation import extract_unknown_answers, keep_only_valid_and_known_answers
 
 
 def standard_analysis_single_token_response(

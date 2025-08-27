@@ -1,6 +1,6 @@
 from typing import List
 
-from reasoning_fine_tune.prompts.mmlu_option_ids import fallback_option_id, option_ids
+from core.prompts.mmlu_option_ids import fallback_option_id, option_ids
 
 answer_marker = ("[[", "]]")
 

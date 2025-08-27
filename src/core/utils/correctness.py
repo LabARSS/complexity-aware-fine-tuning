@@ -1,4 +1,4 @@
-from reasoning_fine_tune.prompts.mmlu_option_ids import option_ids
+from core.prompts.mmlu_option_ids import option_ids
 
 
 def check_answer_correct_mmlu(row, model_answer):

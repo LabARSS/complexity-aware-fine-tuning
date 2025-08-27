@@ -1,7 +1,7 @@
 import numpy as np
 from pandas import DataFrame
 
-from reasoning_fine_tune.utils.validation import keep_only_valid_and_known_answers
+from core.utils.validation import keep_only_valid_and_known_answers
 
 
 def split_into_even_chunks(

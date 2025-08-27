@@ -4,10 +4,10 @@ from concurrent import futures
 import pandas as pd
 from tqdm import tqdm
 
-from reasoning_fine_tune.prompts.mmlu_cot_answer import answer_marker, cot_answer_prompt, cot_sys_prompt
-from reasoning_fine_tune.utils.chunker import chunker
-from reasoning_fine_tune.utils.openrouter import openrouter
-from reasoning_fine_tune.utils.validation import validate_mmlu_answer
+from core.prompts.mmlu_cot_answer import answer_marker, cot_answer_prompt, cot_sys_prompt
+from core.utils.chunker import chunker
+from core.utils.openrouter import openrouter
+from core.utils.validation import validate_mmlu_answer
 
 chunk_size = 30
 

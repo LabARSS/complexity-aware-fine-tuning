@@ -1,7 +1,7 @@
 from multiprocessing import freeze_support
 from pathlib import Path
 
-from reasoning_fine_tune.training.sft_by_complexity_split.sft_by_all_complexity_splits import (
+from core.training.sft_by_complexity_split.sft_by_all_complexity_splits import (
     train_sft_by_all_complexity_splits,
 )
 

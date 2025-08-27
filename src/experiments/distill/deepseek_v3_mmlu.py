@@ -2,8 +2,8 @@ import ast
 from multiprocessing import freeze_support
 from pathlib import Path
 
-from reasoning_fine_tune.distillation.distill import distill_on_dataset
-from reasoning_fine_tune.utils.correctness import check_answer_correct_mmlu
+from core.distillation.distill import distill_on_dataset
+from core.utils.correctness import check_answer_correct_mmlu
 
 if __name__ == "__main__":
     freeze_support()

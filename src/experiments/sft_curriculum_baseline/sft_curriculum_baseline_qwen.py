@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from reasoning_fine_tune.training.sft_curriculum.sft_curriculum import train_sft_curriculum
+from core.training.sft_curriculum.sft_curriculum import train_sft_curriculum
 
 if __name__ == "__main__":
     train_sft_curriculum(

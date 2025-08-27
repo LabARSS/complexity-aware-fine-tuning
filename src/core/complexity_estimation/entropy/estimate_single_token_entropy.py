@@ -7,11 +7,11 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 from transformers import DataCollatorWithPadding
 
-import reasoning_fine_tune.prompts.mmlu_single_token_answer as mmlu_prompts
-from reasoning_fine_tune.complexity_estimation.entropy.logit_entropy import compute_entropy_from_logits
-from reasoning_fine_tune.utils.device import DEVICE, move_batch_to_device
-from reasoning_fine_tune.utils.seed import set_seed
-from reasoning_fine_tune.utils.validation import validate_mmlu_answer
+import core.prompts.mmlu_single_token_answer as mmlu_prompts
+from core.complexity_estimation.entropy.logit_entropy import compute_entropy_from_logits
+from core.utils.device import DEVICE, move_batch_to_device
+from core.utils.seed import set_seed
+from core.utils.validation import validate_mmlu_answer
 
 
 def estimate_dataset(

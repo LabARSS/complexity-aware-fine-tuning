@@ -1,6 +1,6 @@
 from datasets import Dataset
 
-from reasoning_fine_tune.prompts.mmlu_option_ids import option_ids
+from core.prompts.mmlu_option_ids import option_ids
 
 
 def prepare_dataset(tokenizer, get_sys_prompt, get_user_prompt, df, mask_input=False):
