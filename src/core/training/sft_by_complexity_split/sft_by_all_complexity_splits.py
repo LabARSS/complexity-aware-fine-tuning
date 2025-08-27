@@ -1,9 +1,9 @@
 from pathlib import Path
 
-from reasoning_fine_tune.training.sft_by_complexity_split.sft_by_single_complexity_split import (
+from core.training.sft_by_complexity_split.sft_by_single_complexity_split import (
     train_sft_by_complexity_split,
 )
-from reasoning_fine_tune.utils.training_memory_sandbox import memory_sandbox_worker, run_in_memory_sandbox
+from core.utils.training_memory_sandbox import memory_sandbox_worker, run_in_memory_sandbox
 
 TRAIN_POSTFIX = "_train.tsv"
 TEST_POSTFIX = "_test.tsv"

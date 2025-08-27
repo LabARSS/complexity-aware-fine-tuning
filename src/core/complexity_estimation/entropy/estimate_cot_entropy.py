@@ -6,11 +6,11 @@ import pandas as pd
 import torch
 from tqdm import tqdm
 
-from reasoning_fine_tune.complexity_estimation.entropy.logit_sequence_stats import collect_logit_sequence_stats
-from reasoning_fine_tune.prompts.mmlu_cot_answer import answer_marker, cot_answer_prompt, cot_sys_prompt
-from reasoning_fine_tune.utils.device import DEVICE
-from reasoning_fine_tune.utils.embeddings import get_embeddings
-from reasoning_fine_tune.utils.validation import validate_mmlu_answer
+from core.complexity_estimation.entropy.logit_sequence_stats import collect_logit_sequence_stats
+from core.prompts.mmlu_cot_answer import answer_marker, cot_answer_prompt, cot_sys_prompt
+from core.utils.device import DEVICE
+from core.utils.embeddings import get_embeddings
+from core.utils.validation import validate_mmlu_answer
 
 
 def estimate_dataset(

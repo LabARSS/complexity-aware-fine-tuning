@@ -11,13 +11,13 @@ from transformers.models.auto.modeling_auto import AutoModelForCausalLM
 from transformers.models.auto.tokenization_auto import AutoTokenizer
 from transformers.training_args_seq2seq import Seq2SeqTrainingArguments
 
-import reasoning_fine_tune.prompts.mmlu_cot_answer as cot_prompts
-import reasoning_fine_tune.prompts.mmlu_single_token_answer as prompts
-from reasoning_fine_tune.training.sft_by_complexity_split.cot_eval_trainer import CoTEvalTrainer
-from reasoning_fine_tune.utils.device import DEVICE_MAP
-from reasoning_fine_tune.utils.last_checkpoint_dir import get_last_checkpoint_dir
-from reasoning_fine_tune.utils.prepare_dataset import prepare_dataset, prepare_dataset_cot_eval
-from reasoning_fine_tune.utils.seed import set_seed
+import core.prompts.mmlu_cot_answer as cot_prompts
+import core.prompts.mmlu_single_token_answer as prompts
+from core.training.sft_by_complexity_split.cot_eval_trainer import CoTEvalTrainer
+from core.utils.device import DEVICE_MAP
+from core.utils.last_checkpoint_dir import get_last_checkpoint_dir
+from core.utils.prepare_dataset import prepare_dataset, prepare_dataset_cot_eval
+from core.utils.seed import set_seed
 
 TRAIN_BATCH_SIZE = 2
 EVAL_BATCH_SIZE = 16

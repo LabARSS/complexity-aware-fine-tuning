@@ -3,7 +3,7 @@ from typing import Any
 
 import torch
 
-from reasoning_fine_tune.complexity_estimation.entropy.logit_entropy import compute_entropy_from_logits
+from core.complexity_estimation.entropy.logit_entropy import compute_entropy_from_logits
 
 
 @dataclass

@@ -4,12 +4,12 @@ from pathlib import Path
 import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
-from reasoning_fine_tune.complexity_estimation.entropy.estimate_single_token_entropy import estimate_dataset
-from reasoning_fine_tune.prompts.mmlu_single_token_answer import (
+from core.complexity_estimation.entropy.estimate_single_token_entropy import estimate_dataset
+from core.prompts.mmlu_single_token_answer import (
     single_token_sys_prompt_with_fallback_for_unknown_answers,
 )
-from reasoning_fine_tune.utils.correctness import check_answer_correct_mmlu
-from reasoning_fine_tune.utils.device import DEVICE_MAP
+from core.utils.correctness import check_answer_correct_mmlu
+from core.utils.device import DEVICE_MAP
 
 print(f"Using device: {DEVICE_MAP}")
 
