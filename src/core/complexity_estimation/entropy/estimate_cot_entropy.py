@@ -69,6 +69,7 @@ def estimate_dataset(
     if field_answer_embeddings not in df.columns:
         df[field_answer_embeddings] = ""
 
+    # Идёт построчно, без батчинга --> в runner.py сделали по батчам (посторчно: batch_size=1)
     for index, row in tqdm(df.iterrows(), total=df.shape[0]):
         if df.at[index, field_ans_token_index] != -1:
             continue
@@ -86,8 +87,9 @@ def estimate_dataset(
             {"role": "system", "content": sys_prompt},
             {"role": "user", "content": user_prompt},
         ]
-        formatted_prompt = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
 
+        # В runner.py сделали за один шаг: tokenize=True, return_tensors="pt"
+        formatted_prompt = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
         inputs = tokenizer(formatted_prompt, return_tensors="pt").to(DEVICE)
 
         outputs = model.generate(

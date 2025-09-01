@@ -66,6 +66,7 @@ def estimate_dataset(
             {"role": "system", "content": sys_prompt},
             {"role": "user", "content": user_prompt},
         ]
+        # Сохранили подход в runner.py
         tokenized = tokenizer.apply_chat_template(
             messages, tokenize=True, return_tensors="pt", return_dict=True, add_generation_prompt=True
         )
@@ -83,6 +84,7 @@ def estimate_dataset(
     print("\nDs sample:\n")
     print("\n\n".join(tokenizer.batch_decode(ds[:3]["input_ids"])))
 
+    # Работа батчами! (сохранили в runner.py)
     data_collator = DataCollatorWithPadding(tokenizer)
     dataloader = DataLoader(ds, batch_size=batch_size, shuffle=False, collate_fn=data_collator)
 
@@ -118,8 +120,12 @@ def estimate_dataset(
             row_idx = batch_idx * batch_size + answer_idx
             df.at[row_idx, field_ans] = answer
             # generated token position, batch_dim
+
+            # Берём энтропию последнего шага
             final_token_logits = outputs.scores[-1][answer_idx]
             entropy = compute_entropy_from_logits(final_token_logits)
+
+
             df.at[row_idx, field_entropy_value] = entropy
 
             if validate_mmlu_answer(answer):
