@@ -5,9 +5,9 @@ from mistralai import Mistral, SDKError
 
 
 class MistralAPIClient:
-    def __init__(self) -> None:
+    def __init__(self, model: str | None="mistral-large-2411") -> None:
         api_keys = os.environ["MISTRAL_API_KEYS"]
-        self.model = "mistral-large-2411"
+        self.model = model or "mistral-large-2411"
 
         self.clients = [
             Mistral(
