@@ -78,6 +78,7 @@ def oversample_dataset(
     oversample_ratio: int,
     threshold=9,
     dump_every=100,
+    model=None
 ):
     in_df = pd.read_csv(
         in_filename,
@@ -86,7 +87,7 @@ def oversample_dataset(
     )
     out_df = pd.DataFrame(columns=in_df.columns)
 
-    mistral_api_client = MistralAPIClient()
+    mistral_api_client = MistralAPIClient(model=model)
 
     invalid_entries = 0
 
