@@ -5,7 +5,7 @@ from mistralai import Mistral, SDKError
 
 
 class MistralAPIClient:
-    def __init__(self, model: str | None="mistral-large-2411") -> None:
+    def __init__(self, model: str | None="mistral-large-2411", sleep_duration: float | None = None) -> None:
         api_keys = os.environ["MISTRAL_API_KEYS"]
         self.model = model or "mistral-large-2411"
 
@@ -35,6 +35,8 @@ class MistralAPIClient:
             self.SLEEP_DURATION = 0.5
         if len(self.clients) >= 3:
             self.SLEEP_DURATION = 0.2
+        if sleep_duration is not None:
+            self.SLEEP_DURATION = sleep_duration
 
         print("Sleep duration:", self.SLEEP_DURATION)
 
@@ -70,12 +72,12 @@ class MistralAPIClient:
 
                         if (total_hits % 10) == 0:
                             print(f"API limit hit {total_hits} times. Details: {self.api_limit_hits_by_client_ids}")
-                        self._wait(2)
+                        self.wait(2)
                     else:
                         raise e
                 except Exception as e:
                     print("repeat_if_hit_api_limit -> unknown error", e)
-                    self._wait(60)
+                    self.wait(60)
 
         return wrapper
 

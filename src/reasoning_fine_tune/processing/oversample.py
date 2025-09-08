@@ -78,7 +78,8 @@ def oversample_dataset(
     oversample_ratio: int,
     threshold=9,
     dump_every=100,
-    model=None
+    model=None,
+    sleep_duration= None
 ):
     in_df = pd.read_csv(
         in_filename,
@@ -87,35 +88,41 @@ def oversample_dataset(
     )
     out_df = pd.DataFrame(columns=in_df.columns)
 
-    mistral_api_client = MistralAPIClient(model=model)
+    mistral_api_client = MistralAPIClient(model=model, sleep_duration=sleep_duration)
 
     invalid_entries = 0
 
     mistral_api_client.reset_api_limits()
 
     for index, row in tqdm(in_df.iterrows(), total=in_df.shape[0]):
-        question = single_token_answer_prompt(row[question_col], get_options_from_row(row))
+        try:
+            question = single_token_answer_prompt(row[question_col], get_options_from_row(row))
 
-        for _ in range(oversample_ratio):
-            paraphrased_question = paraphrase_with_model(mistral_api_client, question)
-            mistral_api_client.wait()
+            for _ in range(oversample_ratio):
+                try:
+                    paraphrased_question = paraphrase_with_model(mistral_api_client, question)
+                    mistral_api_client.wait()
 
-            try:
-                rating = estimate_rating(
-                    mistral_api_client,
-                    question,
-                    paraphrased_question,
-                )
-                if rating < threshold:
-                    raise Exception("Response rating is too low")
-            except:
-                invalid_entries += 1
+                    rating = estimate_rating(
+                        mistral_api_client,
+                        question,
+                        paraphrased_question,
+                    )
+                    if rating < threshold:
+                        raise Exception("Response rating is too low")
 
-            new_row = row.copy()
-            new_row[question_col] = paraphrased_question
-            out_df = pd.concat([out_df, pd.DataFrame([new_row])], ignore_index=True)
+                    new_row = row.copy()
+                    new_row[question_col] = paraphrased_question
+                    out_df = pd.concat([out_df, pd.DataFrame([new_row])], ignore_index=True)
 
-            mistral_api_client.wait()
+                    mistral_api_client.wait()
+                except:
+                    print(f"Failed paraphrasing for question: {index}")
+                    invalid_entries += 1
+
+        except:
+            print(f"Failed generating prompt for question: {index}")
+            invalid_entries += oversample_ratio
 
         iterations = index * oversample_ratio
         if iterations % dump_every == 0:
