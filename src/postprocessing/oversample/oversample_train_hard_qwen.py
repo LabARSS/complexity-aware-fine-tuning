@@ -11,4 +11,6 @@ oversample_dataset(
     question_col="question",
     get_options_from_row=lambda row: ast.literal_eval(row["options"]),
     oversample_ratio=5,
+    model="mistral-medium-latest",
+    sleep_duration=0.2
 )
