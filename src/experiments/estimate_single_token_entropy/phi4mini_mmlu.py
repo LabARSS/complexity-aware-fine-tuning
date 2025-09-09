@@ -32,5 +32,4 @@ estimate_dataset(
     get_options_from_row=lambda row: ast.literal_eval(row["options"]),
     check_answer_correct=check_answer_correct_mmlu,
     batch_size=32,
-    max_new_tokens=1,
 )
