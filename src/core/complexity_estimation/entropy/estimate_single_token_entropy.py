@@ -1,4 +1,5 @@
 import gc
+import os
 
 import pandas as pd
 import torch
@@ -12,6 +13,22 @@ from core.complexity_estimation.entropy.logit_entropy import compute_entropy_fro
 from core.utils.device import DEVICE, move_batch_to_device
 from core.utils.seed import set_seed
 from core.utils.validation import validate_mmlu_answer
+
+field_entropy_value = "entropy_value"
+
+
+def add_single_token_entropy_cols(df):
+    if field_entropy_value not in df.columns:
+        df[field_entropy_value] = 0.0
+
+
+def process_single_token_entropy_response(df, row_idx, inputs, outputs, response_idx, response, model, tokenizer):
+    final_token_logits = outputs.scores[-1][response_idx]
+    entropy = compute_entropy_from_logits(final_token_logits)
+
+    df.at[row_idx, field_entropy_value] = entropy
+
+    return response
 
 
 def estimate_dataset(
@@ -27,31 +44,40 @@ def estimate_dataset(
     get_sys_prompt=mmlu_prompts.single_token_sys_prompt,
     get_user_prompt=mmlu_prompts.single_token_answer_prompt,
     batch_size=16,
+    dump_every=1000,
+    add_columns=add_single_token_entropy_cols,
+    process_response=process_single_token_entropy_response,
 ):
     invalid_formatting = 0
     correct_answers = 0
 
     set_seed()
 
-    df = pd.read_csv(
-        in_filename,
-        sep="\t",
-        header=0,
-    )
+    if os.path.exists(out_filename):
+        in_filename = out_filename
+
+    if in_filename.endswith(".csv"):
+        df = pd.read_csv(
+            in_filename,
+            sep="\t",
+            header=0,
+        )
+    else:
+        df = pd.read_parquet(
+            in_filename,
+        )
 
     model_name = model.config_class().model_type
     print(model_name)
 
-    field_ans = f"entropy_ans_{model_name}"
-    field_ans_correct = f"entropy_ans_correct_{model_name}"
-    field_entropy_value = f"entropy_value_{model_name}"
-
+    field_response = "entropy_response"
+    if field_response not in df.columns:
+        df[field_response] = ""
+    field_ans_correct = "entropy_ans_correct"
     if field_ans_correct not in df.columns:
         df[field_ans_correct] = False
-    if field_entropy_value not in df.columns:
-        df[field_entropy_value] = 0.0
-    if field_ans not in df.columns:
-        df[field_ans] = ""
+
+    add_columns(df)
 
     tokenizer.padding_side = "left"
 
@@ -66,7 +92,6 @@ def estimate_dataset(
             {"role": "system", "content": sys_prompt},
             {"role": "user", "content": user_prompt},
         ]
-        # Сохранили подход в runner.py
         tokenized = tokenizer.apply_chat_template(
             messages, tokenize=True, return_tensors="pt", return_dict=True, add_generation_prompt=True
         )
@@ -84,7 +109,6 @@ def estimate_dataset(
     print("\nDs sample:\n")
     print("\n\n".join(tokenizer.batch_decode(ds[:3]["input_ids"])))
 
-    # Работа батчами! (сохранили в runner.py)
     data_collator = DataCollatorWithPadding(tokenizer)
     dataloader = DataLoader(ds, batch_size=batch_size, shuffle=False, collate_fn=data_collator)
 
@@ -92,6 +116,10 @@ def estimate_dataset(
 
     pbar = tqdm(dataloader)
     for batch_idx, batch in enumerate(pbar):
+        last_row_in_batch_idx = batch_idx * batch_size + batch_size - 1
+        if df.at[last_row_in_batch_idx, field_response] != "":
+            continue
+
         gc.collect()
         if DEVICE == torch.device("cuda"):
             torch.cuda.empty_cache()
@@ -113,20 +141,14 @@ def estimate_dataset(
 
         # They are all padded to the same length
         input_length = batch["input_ids"].shape[1]
-        answer_token_batch = outputs.sequences[:, input_length:]
-        answer_batch = tokenizer.batch_decode(answer_token_batch, skip_special_tokens=True)
+        response_token_batch = outputs.sequences[:, input_length:]
+        response_batch = tokenizer.batch_decode(response_token_batch, skip_special_tokens=True)
 
-        for answer_idx, answer in enumerate(answer_batch):
-            row_idx = batch_idx * batch_size + answer_idx
-            df.at[row_idx, field_ans] = answer
-            # generated token position, batch_dim
+        for response_idx, response in enumerate(response_batch):
+            row_idx = batch_idx * batch_size + response_idx
+            df.at[row_idx, field_response] = response
 
-            # Берём энтропию последнего шага
-            final_token_logits = outputs.scores[-1][answer_idx]
-            entropy = compute_entropy_from_logits(final_token_logits)
-
-
-            df.at[row_idx, field_entropy_value] = entropy
+            answer = process_response(df, row_idx, batch, outputs, response_idx, response, model, tokenizer)
 
             if validate_mmlu_answer(answer):
                 is_correct = check_answer_correct(df.iloc[row_idx], answer)
@@ -136,15 +158,11 @@ def estimate_dataset(
             else:
                 invalid_formatting += 1
 
-            # For debug
-            if batch_idx == 0 and answer_idx < 10:
-                print(
-                    f"Answer: {answer}\nEntropy: {df.at[row_idx, field_entropy_value]}\nis_correct: {df.at[row_idx, field_ans_correct]}\n"
-                )
-
-        total = batch_idx * batch_size + len(answer_batch)
+        total = batch_idx * batch_size + len(response_batch)
+        if total % dump_every == 0:
+            df.to_parquet(out_filename, compression="gzip")
         pbar.set_description(f"accuracy={correct_answers / total:.2f} / invalid formatting={invalid_formatting}")
 
-    df.to_csv(out_filename, sep="\t", index=False)
+    df.to_parquet(out_filename, compression="gzip")
     print(f"Processed dataset {out_filename}. Total entries: {df.shape[0]}. Invalid formatting: {invalid_formatting}")
     return df
