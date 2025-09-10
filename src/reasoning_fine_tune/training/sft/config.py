@@ -21,6 +21,7 @@ class TrainConfig:
     epochs: int = 3
     log_interval: int = 50
     debug: bool = False
+    run_eval_on_start = True
 
     # prompt / behaviour
     use_cot: bool = False
