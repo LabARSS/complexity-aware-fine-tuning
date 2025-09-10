@@ -1,5 +1,6 @@
 from dataclasses import dataclass, field
-from typing import Optional, Dict
+from typing import Dict
+
 
 @dataclass
 class TrainConfig:
@@ -7,7 +8,9 @@ class TrainConfig:
     train_path: str = "/complexity-aware-fine-tuning/data/data_splits/cross_entropy/phi/train_df_easy.tsv"
     valid_path: str = "/complexity-aware-fine-tuning/data/data_splits/cross_entropy/phi/valid_df_easy.tsv"
     test_path: str = "/complexity-aware-fine-tuning/data/data_splits/cross_entropy/phi/test_balanced_combined_entr.tsv"
-    test_balanced_path: str = "/complexity-aware-fine-tuning/data/data_splits/cross_entropy/phi/test_balanced_combined_entr.tsv"
+    test_balanced_path: str = (
+        "/complexity-aware-fine-tuning/data/data_splits/cross_entropy/phi/test_balanced_combined_entr.tsv"
+    )
     save_dir: str = "/complexity-aware-fine-tuning/data/data_splits/cross_entropy/phi/"
 
     # model / training
@@ -19,7 +22,6 @@ class TrainConfig:
     log_interval: int = 50
     debug: bool = False
 
-
     # prompt / behaviour
     use_cot: bool = False
     max_input_length: int = 800
@@ -30,17 +32,19 @@ class TrainConfig:
     num_workers: int = 4
 
     # model-specific prompt style (token wrappers)
-    prompt_tokens: Dict[str, str] = field(default_factory=lambda: {
-        "system_start": "<|system|>",
-        "system_end": "<|endoftext|>",
-        "user_start": "<|user|>",
-        "user_end": "<|endofprompt|>",
-        "assistant_start": "<|assistant|>",
-        "assistant_end": "<|endoftext|>",
-    })
+    prompt_tokens: Dict[str, str] = field(
+        default_factory=lambda: {
+            "system_start": "<|system|>",
+            "system_end": "<|endoftext|>",
+            "user_start": "<|user|>",
+            "user_end": "<|endofprompt|>",
+            "assistant_start": "<|assistant|>",
+            "assistant_end": "<|endoftext|>",
+        }
+    )
 
     @staticmethod
-    def preset(name: str) -> 'TrainConfig':
+    def preset(name: str) -> "TrainConfig":
         # Define a couple of presets for different models (tweak tokens if necessary)
         if name.endswith("Phi-4-mini-instruct"):
             cfg = TrainConfig(base_model=name)
