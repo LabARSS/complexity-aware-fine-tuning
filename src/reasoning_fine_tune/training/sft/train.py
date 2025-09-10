@@ -510,6 +510,12 @@ class Trainer:
         optimizer = AdamW(self.model.parameters(), lr=self.cfg.lr, fused=True)
         scaler = GradScaler(enabled=False)
 
+        if self.cfg.run_eval_on_start:
+            logging.info("Evaluating model before training")
+            test_balanced_df = pd.read_csv(self.cfg.test_balanced_path, sep="\t")
+            test_acc = self.evaluate_qa(self.model, test_balanced_df, self.tokenizer, desc="TEST BALANCED QA")
+            logging.info(f"TEST BALANCED QA Accuracy: {test_acc * 100:.2f}%")
+
         for epoch in range(self.cfg.epochs):
             self.model.train()
             total_train_loss = 0.0
