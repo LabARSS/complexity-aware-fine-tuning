@@ -184,7 +184,7 @@ def train_sft_curriculum(name, model_id, easy_train_df_path, mid_train_df_path, 
         model_id=model_id,
         train_df_path=easy_train_df_path,
         test_df_path=test_df_path,
-        num_train_epochs=3,
+        num_train_epochs=5,
         eval_on_start=True,
     )
 
@@ -193,7 +193,7 @@ def train_sft_curriculum(name, model_id, easy_train_df_path, mid_train_df_path, 
         model_id=easy_output_dir,
         train_df_path=mid_train_df_path,
         test_df_path=test_df_path,
-        num_train_epochs=3,
+        num_train_epochs=5,
         eval_on_start=False,
     )
 
@@ -202,7 +202,7 @@ def train_sft_curriculum(name, model_id, easy_train_df_path, mid_train_df_path, 
         model_id=mid_output_dir,
         train_df_path=hard_train_df_path,
         test_df_path=test_df_path,
-        num_train_epochs=4,
+        num_train_epochs=10,
         eval_on_start=False,
     )
 

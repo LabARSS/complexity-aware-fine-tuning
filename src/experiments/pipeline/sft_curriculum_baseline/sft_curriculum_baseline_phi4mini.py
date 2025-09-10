@@ -4,7 +4,7 @@ from reasoning_fine_tune.training.sft_curriculum import train_sft_curriculum
 
 if __name__ == "__main__":
     train_sft_curriculum(
-        name="phi4mini",
+        name="phi4mini_20epochs",
         model_id="microsoft/Phi-4-mini-instruct",
         easy_train_df_path=Path(__file__)
         .parent.joinpath("../../../../data/data_splits/entropy_fallback/phi/train_df_easy.tsv")
