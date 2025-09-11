@@ -44,6 +44,19 @@ class Trainer:
         )
         print(f"Logging configured. log_file={log_file}", flush=True)
 
+        self.results_file = os.path.join(self.cfg.save_dir, f"training_{os.getpid()}_results.jsonl")
+        if os.path.exists(self.results_file):
+            try:
+                os.remove(self.results_file)
+                logging.debug(f"Removed previous results file: {self.results_file}")
+            except Exception:
+                pass
+
+    def _add_result(self, epoch: int, accuracy: float):
+        with open(self.results_file, "a") as f:
+            result_dict = {"epoch": epoch, "accuracy": accuracy}
+            f.write(json.dumps(result_dict) + "\n")
+
     def load_model_and_tokenizer(self):
         # debug prints so we see progress in console
         print(f"Loading model {self.cfg.base_model} (may take long)...", flush=True)
@@ -187,7 +200,9 @@ class Trainer:
         return train_ds, val_ds, test_ds, train_df, val_df, test_df
 
     # evaluatio
-    def evaluate_qa(self, model, df: pd.DataFrame, tokenizer, desc: str = "Validating", batch_size: int = 1):
+    def evaluate_qa(
+        self, model, df: pd.DataFrame, tokenizer, epoch: int, desc: str = "Validating", batch_size: int = 1
+    ):
         """
         Verbose debug-capable evaluation.
 
@@ -485,7 +500,9 @@ class Trainer:
                 pbar.set_postfix({"acc": "0%", "errors": total_errors})
 
         pbar.close()
-        return total_correct / (processed if processed else 1.0)
+        accuracy = total_correct / (processed if processed else 1.0)
+        self._add_result(epoch=epoch, accuracy=accuracy)
+        return accuracy
 
     # training loop
     def train(self):
@@ -513,7 +530,7 @@ class Trainer:
         if self.cfg.run_eval_on_start:
             logging.info("Evaluating model before training")
             test_balanced_df = pd.read_csv(self.cfg.test_balanced_path, sep="\t")
-            test_acc = self.evaluate_qa(self.model, test_balanced_df, self.tokenizer, desc="TEST BALANCED QA")
+            test_acc = self.evaluate_qa(self.model, test_balanced_df, self.tokenizer, 0, desc="test_balanced")
             logging.info(f"TEST BALANCED QA Accuracy: {test_acc * 100:.2f}%")
 
         for epoch in range(self.cfg.epochs):
@@ -570,12 +587,12 @@ class Trainer:
             logging.info(f"Epoch {epoch + 1} completed.")
 
             # validation
-            val_acc = self.evaluate_qa(self.model, val_df, self.tokenizer, desc="Validation QA")
+            val_acc = self.evaluate_qa(self.model, val_df, self.tokenizer, epoch + 1, desc="validation")
             logging.info(f"Validation QA Accuracy: {val_acc * 100:.2f}%")
 
             # balanced test (from path)
             test_balanced_df = pd.read_csv(self.cfg.test_balanced_path, sep="\t")
-            test_acc = self.evaluate_qa(self.model, test_balanced_df, self.tokenizer, desc="TEST BALANCED QA")
+            test_acc = self.evaluate_qa(self.model, test_balanced_df, self.tokenizer, epoch + 1, desc="test_balanced")
             logging.info(f"TEST BALANCED QA Accuracy: {test_acc * 100:.2f}%")
 
             # save checkpoint (disabled by default, enable if you want)
