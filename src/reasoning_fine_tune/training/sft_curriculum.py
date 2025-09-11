@@ -116,7 +116,7 @@ def train_sft_curriculum_stage(
         tokenizer=tokenizer, padding=True, pad_to_multiple_of=8, return_tensors="pt"
     )
 
-    output_dir = Path(__file__).parent.joinpath("../../../artifacts/sft_curriculum").joinpath(output_subpath)
+    output_dir = Path(__file__).parent.joinpath("../../../artifacts").joinpath(output_subpath)
 
     model = AutoModelForCausalLM.from_pretrained(model_id, device_map=DEVICE_MAP)
     inferred_device_map = model.hf_device_map

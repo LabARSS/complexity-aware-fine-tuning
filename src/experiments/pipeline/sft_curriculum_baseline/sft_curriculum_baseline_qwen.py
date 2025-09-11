@@ -4,7 +4,7 @@ from reasoning_fine_tune.training.sft_curriculum import train_sft_curriculum
 
 if __name__ == "__main__":
     train_sft_curriculum(
-        name="qwen3b_20epochs",
+        name="pipeline_20epochs/sft_curriculum/qwen",
         model_id="Qwen/Qwen2.5-3B-Instruct",
         easy_train_df_path=Path(__file__)
         .parent.joinpath("../../../../data/data_splits/entropy_fallback/qwen/train_df_easy.tsv")
