@@ -4,4 +4,5 @@
 __pycache__
 .env
 *.parquet
-artifacts
+artifacts/*
+!artifacts/pipeline_20epochs
