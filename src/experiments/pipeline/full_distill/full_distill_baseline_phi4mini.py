@@ -8,6 +8,9 @@ if __name__ == "__main__":
     cfg.epochs = 20
     cfg.debug = False
     cfg.use_cot = True
+    cfg.eval_validation_period = 0
+    cfg.eval_test_period = 5
+    cfg.run_eval_on_start = False
 
     cfg.save_dir = str(
         Path(__file__).parent.joinpath("../../../../artifacts/pipeline_20epochs/full_distill_baseline/phi4")

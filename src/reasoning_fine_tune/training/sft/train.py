@@ -586,14 +586,16 @@ class Trainer:
             pbar.close()
             logging.info(f"Epoch {epoch + 1} completed.")
 
-            # validation
-            val_acc = self.evaluate_qa(self.model, val_df, self.tokenizer, epoch + 1, desc="validation")
-            logging.info(f"Validation QA Accuracy: {val_acc * 100:.2f}%")
+            if (epoch +1) == self.cfg.epochs or self.cfg.eval_validation_period != 0 and (epoch + 1) % self.cfg.eval_validation_period == 0:
+                # validation
+                val_acc = self.evaluate_qa(self.model, val_df, self.tokenizer, epoch + 1, desc="validation")
+                logging.info(f"Validation QA Accuracy: {val_acc * 100:.2f}%")
 
-            # balanced test (from path)
-            test_balanced_df = pd.read_csv(self.cfg.test_balanced_path, sep="\t")
-            test_acc = self.evaluate_qa(self.model, test_balanced_df, self.tokenizer, epoch + 1, desc="test_balanced")
-            logging.info(f"TEST BALANCED QA Accuracy: {test_acc * 100:.2f}%")
+            if (epoch +1) == self.cfg.epochs or (self.cfg.eval_test_period != 0 and ((epoch + 1) % self.cfg.eval_test_period == 0)):
+                # balanced test (from path)
+                test_balanced_df = pd.read_csv(self.cfg.test_balanced_path, sep="\t")
+                test_acc = self.evaluate_qa(self.model, test_balanced_df, self.tokenizer, epoch + 1, desc="test_balanced")
+                logging.info(f"TEST BALANCED QA Accuracy: {test_acc * 100:.2f}%")
 
             # save checkpoint (disabled by default, enable if you want)
             # epoch_dir = os.path.join(self.cfg.save_dir, f"epoch_{epoch+1}")
