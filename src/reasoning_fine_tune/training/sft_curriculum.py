@@ -16,7 +16,7 @@ import reasoning_fine_tune.prompts.mmlu_single_token_answer as prompts
 from reasoning_fine_tune.utils.device import DEVICE_MAP
 from reasoning_fine_tune.utils.prepare_dataset import prepare_dataset
 
-BATCH_SIZE = 4
+BATCH_SIZE = 2
 
 
 def get_last_checkpoint_dir(path):

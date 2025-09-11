@@ -4,5 +4,7 @@
 __pycache__
 .env
 *.parquet
-artifacts/*
-!artifacts/pipeline_20epochs
+artifacts/**
+!artifacts/**/
+!artifacts/pipeline_20epochs/sft_baseline
+!artifacts/pipeline_20epochs/**/trainer_state.json
