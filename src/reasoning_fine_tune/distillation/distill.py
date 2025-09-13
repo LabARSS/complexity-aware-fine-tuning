@@ -5,7 +5,6 @@ import pandas as pd
 from tqdm import tqdm
 
 from reasoning_fine_tune.prompts.mmlu_cot_answer import answer_marker, cot_answer_prompt, cot_sys_prompt
-from reasoning_fine_tune.utils.chunker import chunker
 from reasoning_fine_tune.utils.openrouter import openrouter
 from reasoning_fine_tune.utils.validation import validate_mmlu_answer
 
@@ -34,19 +33,21 @@ def distill_on_dataset(
     get_question_from_row,
     get_options_from_row,
     check_answer_correct,
-    dump_every=10,
-    max_tokens=2048,
+    dump_every=500,
+    max_tokens=4096,
     model="deepseek/deepseek-chat-v3-0324",
     get_sys_prompt=cot_sys_prompt,
     get_user_prompt=cot_answer_prompt,
 ):
     invalid_answers = 0
+    processed_rows = 0
 
     field_response = "distill_response"
     field_ans = "distill_answer"
     field_ans_correct = "distill_ans_correct"
 
     if os.path.exists(out_filename):
+        print("Found an existing DF. Appending...")
         df = pd.read_csv(out_filename, sep="\t", dtype={field_response: "str", field_ans: "str"}, keep_default_na=False)
     else:
         df = pd.read_csv(
@@ -64,18 +65,24 @@ def distill_on_dataset(
         df[field_ans] = ""
 
     with futures.ThreadPoolExecutor(max_workers=chunk_size) as pool:
-        for chunk_idx, chunk in tqdm(enumerate(chunker(df, chunk_size)), total=int(df.shape[0] / chunk_size)):
-            args_list = []
+        pooled_requests_args_list = []
 
-            for index, row in chunk.iterrows():
-                if df.at[index, field_ans] != "":
-                    continue
+        for index, row in tqdm(df.iterrows(), total=df.shape[0]):
+            if row[field_ans_correct]:
+                continue
 
+            processed_rows += 1
+
+            if len(pooled_requests_args_list) < chunk_size:
                 sys_prompt = get_sys_prompt(get_subject_from_row(row))
                 user_prompt = get_user_prompt(get_question_from_row(row), get_options_from_row(row))
-                args_list.append((sys_prompt, user_prompt, index, model, max_tokens))
+                pooled_requests_args_list.append((sys_prompt, user_prompt, index, model, max_tokens))
 
-            results = list(pool.map(call_remote_llm, args_list))
+                if index != (df.shape[0] - 1):
+                    continue
+
+            results = list(pool.map(call_remote_llm, pooled_requests_args_list))
+            pooled_requests_args_list = []
 
             for result in results:
                 if result is None:
@@ -83,9 +90,6 @@ def distill_on_dataset(
                     continue
 
                 index, response = result
-
-                if df.at[index, field_ans_correct]:
-                    continue
 
                 df.at[index, field_response] = response
 
@@ -106,7 +110,7 @@ def distill_on_dataset(
                 #     f"response: {response}\nextracted_answer: {extracted_answer}\ncorrect:{df.at[index, field_ans_correct]}\n\n"
                 # )
 
-            if chunk_idx % dump_every == 0:
+            if processed_rows % dump_every == 0:
                 df.to_csv(out_filename, sep="\t", index=False)
 
     df.to_csv(out_filename, sep="\t", index=False)
