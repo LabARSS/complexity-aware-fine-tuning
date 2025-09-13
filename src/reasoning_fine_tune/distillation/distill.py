@@ -68,7 +68,7 @@ def distill_on_dataset(
             args_list = []
 
             for index, row in chunk.iterrows():
-                if df.at[index, field_response] != "":
+                if df.at[index, field_ans] != "":
                     continue
 
                 sys_prompt = get_sys_prompt(get_subject_from_row(row))
@@ -83,6 +83,9 @@ def distill_on_dataset(
                     continue
 
                 index, response = result
+
+                if df.at[index, field_ans_correct]:
+                    continue
 
                 df.at[index, field_response] = response
 
