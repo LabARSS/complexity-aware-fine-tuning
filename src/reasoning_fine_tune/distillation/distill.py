@@ -8,13 +8,12 @@ from reasoning_fine_tune.prompts.mmlu_cot_answer import answer_marker, cot_answe
 from reasoning_fine_tune.utils.openrouter import openrouter
 from reasoning_fine_tune.utils.validation import validate_mmlu_answer
 
-chunk_size = 30
+chunk_size = 20
 
 
 def call_remote_llm(args):
+    sys_prompt, user_prompt, index, model, max_tokens = args
     try:
-        sys_prompt, user_prompt, index, model, max_tokens = args
-
         messages = [
             {"role": "system", "content": sys_prompt},
             {"role": "user", "content": user_prompt},
@@ -22,7 +21,8 @@ def call_remote_llm(args):
 
         completion = openrouter.chat.completions.create(model=model, messages=messages, max_tokens=max_tokens)
         return index, completion.choices[0].message.content
-    except:
+    except Exception as e:
+        print(f"call_remote_llm: error processing index {index}: {e}")
         return None
 
 
@@ -34,7 +34,7 @@ def distill_on_dataset(
     get_options_from_row,
     check_answer_correct,
     dump_every=500,
-    max_tokens=4096,
+    max_tokens=8192,
     model="deepseek/deepseek-chat-v3-0324",
     get_sys_prompt=cot_sys_prompt,
     get_user_prompt=cot_answer_prompt,
@@ -81,6 +81,7 @@ def distill_on_dataset(
                 if index != (df.shape[0] - 1):
                     continue
 
+            # print("Calling API...")
             results = list(pool.map(call_remote_llm, pooled_requests_args_list))
             pooled_requests_args_list = []
 
