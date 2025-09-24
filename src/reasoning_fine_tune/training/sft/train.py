@@ -153,7 +153,7 @@ class Trainer:
         def load_and_filter_df(path: str | list[str], require_distill: bool = False):
             if type(path) is str:
                 logging.info(f"Loading dataset: {path}")
-                df = pd.read_csv(p, sep="\t")
+                df = pd.read_csv(path, sep="\t")
             else:
                 dfs = []
                 for p in path:
