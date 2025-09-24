@@ -5,7 +5,7 @@ from typing import Dict
 @dataclass
 class TrainConfig:
     # paths
-    train_path: str = "/complexity-aware-fine-tuning/data/data_splits/cross_entropy/phi/train_df_easy.tsv"
+    train_path: str | list[str] = "/complexity-aware-fine-tuning/data/data_splits/cross_entropy/phi/train_df_easy.tsv"
     valid_path: str = "/complexity-aware-fine-tuning/data/data_splits/cross_entropy/phi/valid_df_easy.tsv"
     test_path: str = "/complexity-aware-fine-tuning/data/data_splits/cross_entropy/phi/test_balanced_combined_entr.tsv"
     test_balanced_path: str = (
