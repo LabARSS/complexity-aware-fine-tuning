@@ -116,7 +116,7 @@ class Trainer:
         try:
             options = literal_eval(row["options"])
             # display: "1. option0", "2. option1", ...
-            formatted_options = "\n".join([f"{i+1}. {opt}" for i, opt in enumerate(options)])
+            formatted_options = "\n".join([f"{i + 1}. {opt}" for i, opt in enumerate(options)])
             N = len(options)
 
             sys_msg = cot_sys_prompt(self.cfg.use_cot)
@@ -146,18 +146,26 @@ class Trainer:
             return None
 
     # data preparation
-    def prepare_datasets(self, train_file: str, val_file: str, test_file: str):
+    def prepare_datasets(self, train_file: str | list[str], val_file: str, test_file: str):
         np.random.seed(self.cfg.seed)
         torch.manual_seed(self.cfg.seed)
 
-        def load_and_filter_df(path: str, require_distill: bool = False):
-            logging.info(f"Loading dataset: {path}")
-            df = pd.read_csv(path, sep="\t")
+        def load_and_filter_df(path: str | list[str], require_distill: bool = False):
+            if type(path) is str:
+                logging.info(f"Loading dataset: {path}")
+                df = pd.read_csv(p, sep="\t")
+            else:
+                dfs = []
+                for p in path:
+                    logging.info(f"Loading dataset: {path}")
+                    df = pd.read_csv(p, sep="\t")
+                    dfs.append(df)
+                df = pd.concat(dfs, ignore_index=True)
             if require_distill and "distill_response" in df.columns:
                 df = df[df["distill_response"].notna()]
             formatted = df.apply(lambda r: self.format_prompt_qa(r, include_answer=True), axis=1)
             valid_mask = formatted.notnull()
-            logging.info(f"Skipped {len(df) - valid_mask.sum()} rows when preparing {os.path.basename(path)}")
+            logging.info(f"Skipped {len(df) - valid_mask.sum()} rows when preparing {path}")
             return df[valid_mask], formatted[valid_mask]
 
         train_df, train_formatted = load_and_filter_df(train_file, require_distill=self.cfg.use_cot)
@@ -200,9 +208,7 @@ class Trainer:
         return train_ds, val_ds, test_ds, train_df, val_df, test_df
 
     # evaluatio
-    def evaluate_qa(
-        self, model, df: pd.DataFrame, tokenizer, epoch: int, desc: str = "Validating"
-    ):
+    def evaluate_qa(self, model, df: pd.DataFrame, tokenizer, epoch: int, desc: str = "Validating"):
         """
         Verbose debug-capable evaluation.
 
@@ -505,7 +511,7 @@ class Trainer:
         return accuracy
 
     # training loop
-    def train(self):
+    def train(self, save=False):
         from torch.amp import GradScaler, autocast
         from torch.optim import AdamW
 
@@ -586,15 +592,23 @@ class Trainer:
             pbar.close()
             logging.info(f"Epoch {epoch + 1} completed.")
 
-            if (epoch +1) == self.cfg.epochs or self.cfg.eval_validation_period != 0 and (epoch + 1) % self.cfg.eval_validation_period == 0:
+            if (
+                (epoch + 1) == self.cfg.epochs
+                or self.cfg.eval_validation_period != 0
+                and (epoch + 1) % self.cfg.eval_validation_period == 0
+            ):
                 # validation
                 val_acc = self.evaluate_qa(self.model, val_df, self.tokenizer, epoch + 1, desc="validation")
                 logging.info(f"Validation QA Accuracy: {val_acc * 100:.2f}%")
 
-            if (epoch +1) == self.cfg.epochs or (self.cfg.eval_test_period != 0 and ((epoch + 1) % self.cfg.eval_test_period == 0)):
+            if (epoch + 1) == self.cfg.epochs or (
+                self.cfg.eval_test_period != 0 and ((epoch + 1) % self.cfg.eval_test_period == 0)
+            ):
                 # balanced test (from path)
                 test_balanced_df = pd.read_csv(self.cfg.test_balanced_path, sep="\t")
-                test_acc = self.evaluate_qa(self.model, test_balanced_df, self.tokenizer, epoch + 1, desc="test_balanced")
+                test_acc = self.evaluate_qa(
+                    self.model, test_balanced_df, self.tokenizer, epoch + 1, desc="test_balanced"
+                )
                 logging.info(f"TEST BALANCED QA Accuracy: {test_acc * 100:.2f}%")
 
             # save checkpoint (disabled by default, enable if you want)
@@ -603,3 +617,6 @@ class Trainer:
             # self.model.save_pretrained(epoch_dir)
             # self.tokenizer.save_pretrained(epoch_dir)
             # logging.info(f"Model saved to {epoch_dir}")
+        self.model.save_pretrained(self.cfg.save_dir)
+        self.tokenizer.save_pretrained(self.cfg.save_dir)
+        logging.info(f"Model saved to {self.cfg.save_dir}")
