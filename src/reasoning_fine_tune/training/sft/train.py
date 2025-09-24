@@ -52,9 +52,9 @@ class Trainer:
             except Exception:
                 pass
 
-    def _add_result(self, epoch: int, accuracy: float):
+    def _add_result(self, desc: str, epoch: int, accuracy: float):
         with open(self.results_file, "a") as f:
-            result_dict = {"epoch": epoch, "accuracy": accuracy}
+            result_dict = {"desc": desc, "epoch": epoch, "accuracy": accuracy}
             f.write(json.dumps(result_dict) + "\n")
 
     def load_model_and_tokenizer(self):
@@ -115,8 +115,8 @@ class Trainer:
     def format_prompt_qa(self, row: pd.Series, include_answer: bool = True) -> str:
         try:
             options = literal_eval(row["options"])
-            # display: "0. option0", "1. option1", ...
-            formatted_options = "\n".join([f"{i}. {opt}" for i, opt in enumerate(options)])
+            # display: "1. option0", "2. option1", ...
+            formatted_options = "\n".join([f"{i+1}. {opt}" for i, opt in enumerate(options)])
             N = len(options)
 
             sys_msg = cot_sys_prompt(self.cfg.use_cot)
@@ -201,7 +201,7 @@ class Trainer:
 
     # evaluatio
     def evaluate_qa(
-        self, model, df: pd.DataFrame, tokenizer, epoch: int, desc: str = "Validating", batch_size: int = 1
+        self, model, df: pd.DataFrame, tokenizer, epoch: int, desc: str = "Validating"
     ):
         """
         Verbose debug-capable evaluation.
@@ -238,8 +238,8 @@ class Trainer:
                     f.write(json.dumps(obj, ensure_ascii=False) + "\n")
 
         indices = list(range(len(df)))
-        for i in range(0, len(df), batch_size):
-            batch_indices = indices[i : i + batch_size]
+        for i in range(0, len(df), self.cfg.eval_batch_size):
+            batch_indices = indices[i : i + self.cfg.eval_batch_size]
             rows = [df.iloc[idx] for idx in batch_indices]
 
             prompts = []
@@ -261,10 +261,10 @@ class Trainer:
                 ai_val = None
                 if "answer_index" in r.index and pd.notna(r["answer_index"]):
                     try:
-                        ai_val = int(r["answer_index"])
+                        ai_val = int(r["answer_index"]) + 1
                     except Exception:
                         try:
-                            ai_val = int(float(r["answer_index"]))
+                            ai_val = int(float(r["answer_index"])) + 1
                         except Exception:
                             ai_val = None
                 elif self.cfg.use_cot and "distill_answer" in r.index and pd.notna(r["distill_answer"]):
@@ -338,7 +338,7 @@ class Trainer:
                         )
                     continue
 
-                if not (0 <= int(ai_val) < len(opts)):
+                if not (0 < int(ai_val) <= len(opts)):
                     total_errors += 1
 
                     logging.error(
@@ -501,7 +501,7 @@ class Trainer:
 
         pbar.close()
         accuracy = total_correct / (processed if processed else 1.0)
-        self._add_result(epoch=epoch, accuracy=accuracy)
+        self._add_result(epoch=epoch, accuracy=accuracy, desc=desc)
         return accuracy
 
     # training loop

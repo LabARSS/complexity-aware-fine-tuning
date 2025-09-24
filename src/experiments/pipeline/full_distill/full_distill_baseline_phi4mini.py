@@ -11,6 +11,9 @@ if __name__ == "__main__":
     cfg.eval_validation_period = 0
     cfg.eval_test_period = 5
     cfg.run_eval_on_start = False
+    cfg.batch_size = 4
+    cfg.max_new_tokens = 8192
+    cfg.eval_batch_size = 4
 
     cfg.save_dir = str(
         Path(__file__).parent.joinpath("../../../../artifacts/pipeline_20epochs/full_distill_baseline/phi4")

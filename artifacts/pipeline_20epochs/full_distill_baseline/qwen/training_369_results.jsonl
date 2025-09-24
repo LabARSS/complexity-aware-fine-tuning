@@ -1,0 +1,5 @@
+{"epoch": 5, "accuracy": 0.41280353200883}
+{"epoch": 10, "accuracy": 0.38962472406181015}
+{"epoch": 15, "accuracy": 0.3554083885209713}
+{"epoch": 20, "accuracy": 0.4, "desc": "val"}
+{"epoch": 20, "accuracy": 0.3620309050772627}
