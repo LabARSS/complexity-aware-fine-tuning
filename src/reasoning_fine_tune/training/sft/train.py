@@ -137,7 +137,7 @@ class Trainer:
                     prompt += f"\n{row['distill_response']}{t['assistant_end']}"
                 elif "answer_index" in row.index and pd.notna(row["answer_index"]):
                     # answer_index is expected to be zero-based already
-                    prompt += f"\n{ANSWER_MARKER[0]}{int(row['answer_index'])}{ANSWER_MARKER[1]}{t['assistant_end']}"
+                    prompt += f"\n{ANSWER_MARKER[0]}{int(row['answer_index']) + 1}{ANSWER_MARKER[1]}{t['assistant_end']}"
                 else:
                     prompt += t["assistant_end"]
             return prompt
