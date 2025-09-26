@@ -391,7 +391,7 @@ class Trainer:
                 return_tensors="pt",
                 padding=True,
                 truncation=True,
-                max_length=self.cfg.max_input_length,
+                max_length=self.cfg.max_input_length_eval,
                 return_attention_mask=True,
             ).to(model.device)
 
@@ -551,6 +551,7 @@ class Trainer:
 
                 if batch_idx == 0:
                     sample = self.tokenizer.decode(batch["input_ids"][0], skip_special_tokens=True)
+                    logging.info(f"Training batch input ids shape: {batch["input_ids"].shape}")
                     logging.info(f"\nTraining Sample:\n{sample}")
 
                 with autocast(device_type="cuda" if torch.cuda.is_available() else "cpu", dtype=torch.float16):

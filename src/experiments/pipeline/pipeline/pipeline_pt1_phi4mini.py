@@ -7,6 +7,8 @@ if __name__ == "__main__":
     cfg = TrainConfig.preset("microsoft/Phi-4-mini-instruct")
     cfg.epochs = 10
     cfg.debug = False
+    cfg.batch_size = 8
+    cfg.eval_batch_size = 32
 
     cfg.save_dir = str(Path(__file__).parent.joinpath("../../../../artifacts/pipeline_20epochs/pipeline/phi4/pt1"))
     cfg.train_path = [

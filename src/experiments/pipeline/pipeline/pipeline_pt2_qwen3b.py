@@ -10,10 +10,9 @@ if __name__ == "__main__":
     cfg.base_model = str(Path(__file__).parent.joinpath("../../../../artifacts/pipeline_20epochs/pipeline/qwen/pt1"))
     cfg.use_cot = True
     cfg.eval_validation_period = 0
-    cfg.eval_test_period = 1
+    cfg.eval_test_period = 2
     cfg.run_eval_on_start = False
-    cfg.batch_size = 4
-    cfg.max_new_tokens = 8192
+    cfg.batch_size = 2
     cfg.eval_batch_size = 8
 
     cfg.save_dir = str(Path(__file__).parent.joinpath("../../../../artifacts/pipeline_20epochs/pipeline/qwen/pt2"))
@@ -35,3 +34,4 @@ if __name__ == "__main__":
     )
 
     trainer = Trainer(cfg)
+    trainer.train()
