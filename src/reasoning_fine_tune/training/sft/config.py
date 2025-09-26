@@ -28,8 +28,9 @@ class TrainConfig:
 
     # prompt / behaviour
     use_cot: bool = False
-    max_input_length: int = 800
-    max_new_tokens: int = 1500
+    max_input_length: int = 12888
+    max_input_length_eval: int = 2048
+    max_new_tokens: int = 12888
 
     # runtime
     seed: int = 42
