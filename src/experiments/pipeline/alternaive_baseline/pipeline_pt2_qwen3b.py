@@ -10,7 +10,7 @@ if __name__ == "__main__":
     cfg.base_model = str(Path(__file__).parent.joinpath("../../../../artifacts/pipeline_20epochs/alternative/qwen/pt1"))
     cfg.use_cot = True
     cfg.eval_validation_period = 0
-    cfg.eval_test_period = 2
+    cfg.eval_test_period = [2, 5, 10]
     cfg.run_eval_on_start = False
     cfg.batch_size = 4
     cfg.eval_batch_size = 8
