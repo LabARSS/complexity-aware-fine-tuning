@@ -1,0 +1,6 @@
+{"desc": "test_balanced", "epoch": 2, "accuracy": 0.46578366445916114}
+{"desc": "test_balanced", "epoch": 4, "accuracy": 0.47130242825607066}
+{"desc": "test_balanced", "epoch": 6, "accuracy": 0.45364238410596025}
+{"desc": "test_balanced", "epoch": 8, "accuracy": 0.4768211920529801}
+{"desc": "validation", "epoch": 10, "accuracy": 0.44333333333333336}
+{"desc": "test_balanced", "epoch": 10, "accuracy": 0.44421321586786422}
