@@ -23,7 +23,7 @@ class TrainConfig:
     debug: bool = False
     run_eval_on_start = True
     eval_validation_period = 1
-    eval_test_period = 1
+    eval_test_period: int | list[int] = 1
     eval_batch_size = 1
 
     # prompt / behaviour

@@ -137,7 +137,9 @@ class Trainer:
                     prompt += f"\n{row['distill_response']}{t['assistant_end']}"
                 elif "answer_index" in row.index and pd.notna(row["answer_index"]):
                     # answer_index is expected to be zero-based already
-                    prompt += f"\n{ANSWER_MARKER[0]}{int(row['answer_index']) + 1}{ANSWER_MARKER[1]}{t['assistant_end']}"
+                    prompt += (
+                        f"\n{ANSWER_MARKER[0]}{int(row['answer_index']) + 1}{ANSWER_MARKER[1]}{t['assistant_end']}"
+                    )
                 else:
                     prompt += t["assistant_end"]
             return prompt
@@ -551,7 +553,7 @@ class Trainer:
 
                 if batch_idx == 0:
                     sample = self.tokenizer.decode(batch["input_ids"][0], skip_special_tokens=True)
-                    logging.info(f"Training batch input ids shape: {batch["input_ids"].shape}")
+                    logging.info(f"Training batch input ids shape: {batch['input_ids'].shape}")
                     logging.info(f"\nTraining Sample:\n{sample}")
 
                 with autocast(device_type="cuda" if torch.cuda.is_available() else "cpu", dtype=torch.float16):
@@ -593,18 +595,20 @@ class Trainer:
             pbar.close()
             logging.info(f"Epoch {epoch + 1} completed.")
 
-            if (
-                self.cfg.eval_validation_period != 0 and
-                ((epoch + 1) == self.cfg.epochs or (epoch + 1) % self.cfg.eval_validation_period == 0)
+            if self.cfg.eval_validation_period != 0 and (
+                (epoch + 1) == self.cfg.epochs or (epoch + 1) % self.cfg.eval_validation_period == 0
             ):
                 # validation
                 val_acc = self.evaluate_qa(self.model, val_df, self.tokenizer, epoch + 1, desc="validation")
                 logging.info(f"Validation QA Accuracy: {val_acc * 100:.2f}%")
 
-            if (
-                self.cfg.eval_test_period != 0 and 
-                ((epoch + 1) == self.cfg.epochs or (epoch + 1) % self.cfg.eval_test_period == 0)
-            ):
+            skip_eval_test = self.cfg.eval_test_period == 0
+            is_last_epoch = (epoch + 1) == self.cfg.epochs
+            if type(self.cfg.eval_test_period) is list:
+                epoch_matches_eval_test_period = (epoch + 1) in self.cfg.eval_test_period
+            else:
+                epoch_matches_eval_test_period = (epoch + 1) % self.cfg.eval_test_period == 0
+            if not skip_eval_test and (is_last_epoch or epoch_matches_eval_test_period):
                 # balanced test (from path)
                 test_balanced_df = pd.read_csv(self.cfg.test_balanced_path, sep="\t")
                 test_acc = self.evaluate_qa(
