@@ -1,5 +1,5 @@
-{"epoch": 5, "accuracy": 0.5985663082437276}
-{"epoch": 10, "accuracy": 0.6236559139784946}
-{"epoch": 15, "accuracy": 0.6111111111111112}
-{"epoch": 20, "accuracy": 0.6053511705685619, "desc": "val"}
-{"epoch": 20, "accuracy": 0.6111111111111112}
+{"desc": "test_balanced", "epoch": 0, "accuracy": 0.4014}
+{"desc": "test_balanced", "epoch": 5, "accuracy": 0.5985663082437276}
+{"desc": "test_balanced", "epoch": 10, "accuracy": 0.6236559139784946}
+{"desc": "test_balanced", "epoch": 15, "accuracy": 0.6111111111111112}
+{"desc": "test_balanced", "epoch": 20, "accuracy": 0.6111111111111112}
