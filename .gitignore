@@ -9,3 +9,4 @@ artifacts/**
 !artifacts/pipeline_20epochs/sft_baseline/**/*
 !artifacts/pipeline_20epochs/full_distill_baseline/**/*
 !artifacts/pipeline_20epochs/**/trainer_state.json
+!artifacts/pipeline_20epochs/pipeline/**/**/*.jsonl

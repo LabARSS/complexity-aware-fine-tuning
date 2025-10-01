@@ -594,16 +594,16 @@ class Trainer:
             logging.info(f"Epoch {epoch + 1} completed.")
 
             if (
-                (epoch + 1) == self.cfg.epochs
-                or self.cfg.eval_validation_period != 0
-                and (epoch + 1) % self.cfg.eval_validation_period == 0
+                self.cfg.eval_validation_period != 0 and
+                ((epoch + 1) == self.cfg.epochs or (epoch + 1) % self.cfg.eval_validation_period == 0)
             ):
                 # validation
                 val_acc = self.evaluate_qa(self.model, val_df, self.tokenizer, epoch + 1, desc="validation")
                 logging.info(f"Validation QA Accuracy: {val_acc * 100:.2f}%")
 
-            if (epoch + 1) == self.cfg.epochs or (
-                self.cfg.eval_test_period != 0 and ((epoch + 1) % self.cfg.eval_test_period == 0)
+            if (
+                self.cfg.eval_test_period != 0 and 
+                ((epoch + 1) == self.cfg.epochs or (epoch + 1) % self.cfg.eval_test_period == 0)
             ):
                 # balanced test (from path)
                 test_balanced_df = pd.read_csv(self.cfg.test_balanced_path, sep="\t")
