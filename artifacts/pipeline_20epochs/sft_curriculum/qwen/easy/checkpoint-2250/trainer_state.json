@@ -11,7 +11,7 @@
   "log_history": [
     {
       "epoch": 0,
-      "eval_accuracy": 0.37748344370860926,
+      "eval_accuracy": 0.3325740706008705,
       "eval_loss": 4.186078071594238,
       "eval_runtime": 29.1281,
       "eval_samples_per_second": 31.104,
