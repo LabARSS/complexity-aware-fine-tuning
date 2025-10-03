@@ -1,0 +1,11 @@
+{"desc": "test_balanced", "epoch": 0, "accuracy": 0.35}
+{"desc": "test_balanced", "epoch": 1, "accuracy": 0.53}
+{"desc": "test_balanced", "epoch": 2, "accuracy": 0.54}
+{"desc": "test_balanced", "epoch": 3, "accuracy": 0.55}
+{"desc": "test_balanced", "epoch": 4, "accuracy": 0.56}
+{"desc": "test_balanced", "epoch": 5, "accuracy": 0.57}
+{"desc": "test_balanced", "epoch": 6, "accuracy": 0.571}
+{"desc": "test_balanced", "epoch": 7, "accuracy": 0.56}
+{"desc": "test_balanced", "epoch": 8, "accuracy": 0.56}
+{"desc": "test_balanced", "epoch": 9, "accuracy": 0.56}
+{"desc": "test_balanced", "epoch": 10, "accuracy": 0.56}
