@@ -11,7 +11,6 @@ if __name__ == "__main__":
     cfg.save_dir = str(Path(__file__).parent.joinpath("../../../../artifacts/pipeline_20epochs/alternative/qwen/pt1"))
     cfg.train_path = [
         str(Path(__file__).parent.joinpath("../../../../data/data_splits/entropy_fallback/qwen/train_df_hard.tsv")),
-        str(Path(__file__).parent.joinpath("../../../../data/data_splits/entropy_fallback/qwen/train_df_middle.tsv")),
     ]
     cfg.valid_path = str(
         Path(__file__).parent.joinpath("../../../../data/data_splits/entropy_fallback/qwen/valid_df_combined.tsv")
