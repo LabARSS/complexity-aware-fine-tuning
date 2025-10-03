@@ -1,0 +1,13 @@
+{"epoch": 1, "timestamp": 1759270520.887416, "accuracy": null, "desc": "test_balanced"}
+{"epoch": 2, "timestamp": 1759276089.682043, "accuracy": 0.47333333333333333, "desc": "test_balanced"}
+{"epoch": 3, "timestamp": 1759277102.8443444, "accuracy": null, "desc": "test_balanced"}
+{"epoch": 4, "timestamp": 1759283735.1436322, "accuracy": 0.48333333333333334, "desc": "test_balanced"}
+{"epoch": 5, "timestamp": 1759284767.0666466, "accuracy": null, "desc": "test_balanced"}
+{"epoch": 6, "timestamp": 1759292023.586019, "accuracy": 0.47, "desc": "test_balanced"}
+{"epoch": 7, "timestamp": 1759293062.5180948, "accuracy": null, "desc": "test_balanced"}
+{"epoch": 8, "timestamp": 1759300009.849447, "accuracy": 0.49, "desc": "test_balanced"}
+{"epoch": 9, "timestamp": 1759301056.9003987, "accuracy": null, "desc": "test_balanced"}
+{"epoch": 10, "timestamp": 1759306755.6079173, "accuracy": 0.5233333333333333, "desc": "test_balanced"}
+{"epoch": 11, "timestamp": 1759307782.1189015, "accuracy": null, "desc": "test_balanced"}
+{"epoch": 12, "timestamp": 1759314101.3035731, "accuracy": 0.5066666666666667, "desc": "test_balanced"}
+{"epoch": 13, "timestamp": 1759315116.9653914, "accuracy": null, "desc": "test_balanced"}
