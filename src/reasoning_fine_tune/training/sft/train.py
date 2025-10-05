@@ -52,9 +52,9 @@ class Trainer:
             except Exception:
                 pass
 
-    def _add_result(self, epoch: int, accuracy: float):
+    def _add_result(self, desc: str, epoch: int, accuracy: float):
         with open(self.results_file, "a") as f:
-            result_dict = {"epoch": epoch, "accuracy": accuracy}
+            result_dict = {"desc": desc, "epoch": epoch, "accuracy": accuracy}
             f.write(json.dumps(result_dict) + "\n")
 
     def load_model_and_tokenizer(self):
@@ -115,8 +115,8 @@ class Trainer:
     def format_prompt_qa(self, row: pd.Series, include_answer: bool = True) -> str:
         try:
             options = literal_eval(row["options"])
-            # display: "0. option0", "1. option1", ...
-            formatted_options = "\n".join([f"{i}. {opt}" for i, opt in enumerate(options)])
+            # display: "1. option0", "2. option1", ...
+            formatted_options = "\n".join([f"{i + 1}. {opt}" for i, opt in enumerate(options)])
             N = len(options)
 
             sys_msg = cot_sys_prompt(self.cfg.use_cot)
@@ -137,7 +137,9 @@ class Trainer:
                     prompt += f"\n{row['distill_response']}{t['assistant_end']}"
                 elif "answer_index" in row.index and pd.notna(row["answer_index"]):
                     # answer_index is expected to be zero-based already
-                    prompt += f"\n{ANSWER_MARKER[0]}{int(row['answer_index'])}{ANSWER_MARKER[1]}{t['assistant_end']}"
+                    prompt += (
+                        f"\n{ANSWER_MARKER[0]}{int(row['answer_index']) + 1}{ANSWER_MARKER[1]}{t['assistant_end']}"
+                    )
                 else:
                     prompt += t["assistant_end"]
             return prompt
@@ -146,18 +148,26 @@ class Trainer:
             return None
 
     # data preparation
-    def prepare_datasets(self, train_file: str, val_file: str, test_file: str):
+    def prepare_datasets(self, train_file: str | list[str], val_file: str, test_file: str):
         np.random.seed(self.cfg.seed)
         torch.manual_seed(self.cfg.seed)
 
-        def load_and_filter_df(path: str, require_distill: bool = False):
-            logging.info(f"Loading dataset: {path}")
-            df = pd.read_csv(path, sep="\t")
+        def load_and_filter_df(path: str | list[str], require_distill: bool = False):
+            if type(path) is str:
+                logging.info(f"Loading dataset: {path}")
+                df = pd.read_csv(path, sep="\t")
+            else:
+                dfs = []
+                for p in path:
+                    logging.info(f"Loading dataset: {path}")
+                    df = pd.read_csv(p, sep="\t")
+                    dfs.append(df)
+                df = pd.concat(dfs, ignore_index=True)
             if require_distill and "distill_response" in df.columns:
                 df = df[df["distill_response"].notna()]
             formatted = df.apply(lambda r: self.format_prompt_qa(r, include_answer=True), axis=1)
             valid_mask = formatted.notnull()
-            logging.info(f"Skipped {len(df) - valid_mask.sum()} rows when preparing {os.path.basename(path)}")
+            logging.info(f"Skipped {len(df) - valid_mask.sum()} rows when preparing {path}")
             return df[valid_mask], formatted[valid_mask]
 
         train_df, train_formatted = load_and_filter_df(train_file, require_distill=self.cfg.use_cot)
@@ -200,9 +210,7 @@ class Trainer:
         return train_ds, val_ds, test_ds, train_df, val_df, test_df
 
     # evaluatio
-    def evaluate_qa(
-        self, model, df: pd.DataFrame, tokenizer, epoch: int, desc: str = "Validating", batch_size: int = 1
-    ):
+    def evaluate_qa(self, model, df: pd.DataFrame, tokenizer, epoch: int, desc: str = "Validating"):
         """
         Verbose debug-capable evaluation.
 
@@ -238,8 +246,8 @@ class Trainer:
                     f.write(json.dumps(obj, ensure_ascii=False) + "\n")
 
         indices = list(range(len(df)))
-        for i in range(0, len(df), batch_size):
-            batch_indices = indices[i : i + batch_size]
+        for i in range(0, len(df), self.cfg.eval_batch_size):
+            batch_indices = indices[i : i + self.cfg.eval_batch_size]
             rows = [df.iloc[idx] for idx in batch_indices]
 
             prompts = []
@@ -261,10 +269,10 @@ class Trainer:
                 ai_val = None
                 if "answer_index" in r.index and pd.notna(r["answer_index"]):
                     try:
-                        ai_val = int(r["answer_index"])
+                        ai_val = int(r["answer_index"]) + 1
                     except Exception:
                         try:
-                            ai_val = int(float(r["answer_index"]))
+                            ai_val = int(float(r["answer_index"])) + 1
                         except Exception:
                             ai_val = None
                 elif self.cfg.use_cot and "distill_answer" in r.index and pd.notna(r["distill_answer"]):
@@ -338,7 +346,7 @@ class Trainer:
                         )
                     continue
 
-                if not (0 <= int(ai_val) < len(opts)):
+                if not (0 < int(ai_val) <= len(opts)):
                     total_errors += 1
 
                     logging.error(
@@ -385,7 +393,7 @@ class Trainer:
                 return_tensors="pt",
                 padding=True,
                 truncation=True,
-                max_length=self.cfg.max_input_length,
+                max_length=self.cfg.max_input_length_eval,
                 return_attention_mask=True,
             ).to(model.device)
 
@@ -501,11 +509,11 @@ class Trainer:
 
         pbar.close()
         accuracy = total_correct / (processed if processed else 1.0)
-        self._add_result(epoch=epoch, accuracy=accuracy)
+        self._add_result(epoch=epoch, accuracy=accuracy, desc=desc)
         return accuracy
 
     # training loop
-    def train(self):
+    def train(self, save=False):
         from torch.amp import GradScaler, autocast
         from torch.optim import AdamW
 
@@ -545,6 +553,7 @@ class Trainer:
 
                 if batch_idx == 0:
                     sample = self.tokenizer.decode(batch["input_ids"][0], skip_special_tokens=True)
+                    logging.info(f"Training batch input ids shape: {batch['input_ids'].shape}")
                     logging.info(f"\nTraining Sample:\n{sample}")
 
                 with autocast(device_type="cuda" if torch.cuda.is_available() else "cpu", dtype=torch.float16):
@@ -586,15 +595,25 @@ class Trainer:
             pbar.close()
             logging.info(f"Epoch {epoch + 1} completed.")
 
-            if (epoch +1) == self.cfg.epochs or self.cfg.eval_validation_period != 0 and (epoch + 1) % self.cfg.eval_validation_period == 0:
+            if self.cfg.eval_validation_period != 0 and (
+                (epoch + 1) == self.cfg.epochs or (epoch + 1) % self.cfg.eval_validation_period == 0
+            ):
                 # validation
                 val_acc = self.evaluate_qa(self.model, val_df, self.tokenizer, epoch + 1, desc="validation")
                 logging.info(f"Validation QA Accuracy: {val_acc * 100:.2f}%")
 
-            if (epoch +1) == self.cfg.epochs or (self.cfg.eval_test_period != 0 and ((epoch + 1) % self.cfg.eval_test_period == 0)):
+            skip_eval_test = self.cfg.eval_test_period == 0
+            is_last_epoch = (epoch + 1) == self.cfg.epochs
+            if type(self.cfg.eval_test_period) is list:
+                epoch_matches_eval_test_period = (epoch + 1) in self.cfg.eval_test_period
+            else:
+                epoch_matches_eval_test_period = (epoch + 1) % self.cfg.eval_test_period == 0
+            if not skip_eval_test and (is_last_epoch or epoch_matches_eval_test_period):
                 # balanced test (from path)
                 test_balanced_df = pd.read_csv(self.cfg.test_balanced_path, sep="\t")
-                test_acc = self.evaluate_qa(self.model, test_balanced_df, self.tokenizer, epoch + 1, desc="test_balanced")
+                test_acc = self.evaluate_qa(
+                    self.model, test_balanced_df, self.tokenizer, epoch + 1, desc="test_balanced"
+                )
                 logging.info(f"TEST BALANCED QA Accuracy: {test_acc * 100:.2f}%")
 
             # save checkpoint (disabled by default, enable if you want)
@@ -603,3 +622,6 @@ class Trainer:
             # self.model.save_pretrained(epoch_dir)
             # self.tokenizer.save_pretrained(epoch_dir)
             # logging.info(f"Model saved to {epoch_dir}")
+        self.model.save_pretrained(self.cfg.save_dir)
+        self.tokenizer.save_pretrained(self.cfg.save_dir)
+        logging.info(f"Model saved to {self.cfg.save_dir}")

@@ -5,7 +5,7 @@ from typing import Dict
 @dataclass
 class TrainConfig:
     # paths
-    train_path: str = "/complexity-aware-fine-tuning/data/data_splits/cross_entropy/phi/train_df_easy.tsv"
+    train_path: str | list[str] = "/complexity-aware-fine-tuning/data/data_splits/cross_entropy/phi/train_df_easy.tsv"
     valid_path: str = "/complexity-aware-fine-tuning/data/data_splits/cross_entropy/phi/valid_df_easy.tsv"
     test_path: str = "/complexity-aware-fine-tuning/data/data_splits/cross_entropy/phi/test_balanced_combined_entr.tsv"
     test_balanced_path: str = (
@@ -23,12 +23,14 @@ class TrainConfig:
     debug: bool = False
     run_eval_on_start = True
     eval_validation_period = 1
-    eval_test_period = 1
+    eval_test_period: int | list[int] = 1
+    eval_batch_size = 1
 
     # prompt / behaviour
     use_cot: bool = False
-    max_input_length: int = 800
-    max_new_tokens: int = 1500
+    max_input_length: int = 12888
+    max_input_length_eval: int = 2048
+    max_new_tokens: int = 12888
 
     # runtime
     seed: int = 42

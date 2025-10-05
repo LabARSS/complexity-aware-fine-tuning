@@ -1,0 +1,5 @@
+{"desc": "test_balanced", "epoch": 2, "accuracy": 0.44}
+{"desc": "test_balanced", "epoch": 4, "accuracy": 0.47}
+{"desc": "test_balanced", "epoch": 6, "accuracy": 0.48}
+{"desc": "test_balanced", "epoch": 8, "accuracy": 0.50}
+{"desc": "test_balanced", "epoch": 10, "accuracy": 0.52}
