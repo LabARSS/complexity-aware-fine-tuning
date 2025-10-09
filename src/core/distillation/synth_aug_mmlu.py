@@ -10,10 +10,11 @@ from core.utils.chunker import chunker
 from core.prompts.mmlu_branches_aug import *
 
 # defaults
-DEFAULT_MODEL = os.getenv("OPENROUTER_MODEL", "deepseek/deepseek-r1:free")
+DEFAULT_MODEL = os.getenv("OPENROUTER_MODEL", "deepseek/deepseek-r1-0528")
 DEFAULT_MAX_TOKENS = int(os.getenv("OPENROUTER_MAX_TOKENS", "2048"))
-CHUNK_SIZE = int(os.getenv("SYNTH_CHUNK_SIZE", "16"))
+CHUNK_SIZE = int(os.getenv("SYNTH_CHUNK_SIZE", "2"))
 DUMP_EVERY = int(os.getenv("SYNTH_DUMP_EVERY", "10"))
+DEFAULT_BRANCHES = tuple((os.getenv("SYNTH_BRANCHES") or "B,C").split(","))
 
 ALL_LETTERS = [chr(c) for c in range(ord("A"), ord("Z")+1)]
 
@@ -72,10 +73,8 @@ def _openrouter_json(sys_prompt: str, user_prompt: str, model: str, max_tokens: 
             except Exception:
                 pass
     j = j or {}
-
     if reasoning_text and "thinking" not in j:
         j["thinking"] = reasoning_text
-
     return j
 
 def branch_a(q, choices, gold, model, max_tokens):
@@ -98,7 +97,7 @@ def branch_b(q, choices, gold, model, max_tokens):
     letters = letters_for(len(choices))
     allowed = "|".join(letters)
     base = render_mc_prompt(q, choices, letters)
-    distractor_tpl = "{" + ", ".join([f'"{L}":"..."' for L in letters]) + "}"
+    distractor_tpl = "{" + ", ".join([f'"{L}":"..."' for L in letters if L != gold]) + "}"
     prompt = (p_json_guardrails() + "\n" + base + p_branch_b(gold, allowed, distractor_tpl))
     j = _openrouter_json("You return STRICT JSON.", prompt, model, max_tokens)
     return {
@@ -112,7 +111,7 @@ def branch_c(q, choices, gold, model, max_tokens):
     letters = letters_for(len(choices))
     allowed = "|".join(letters)
     base = render_mc_prompt(q, choices, letters)
-    distractor_tpl = "{" + ", ".join([f'"{L}":"..."' for L in letters]) + "}"
+    distractor_tpl = "{" + ", ".join([f'"{L}":"..."' for L in letters if L != gold]) + "}"
 
     prompt1 = (p_json_guardrails() + "\n" + base + p_branch_c_one(allowed))
     j1 = _openrouter_json("You return STRICT JSON.", user_prompt=prompt1, model=model, max_tokens=max_tokens)
@@ -151,7 +150,7 @@ def _build_record_in(row_dict, question, choices, letters, gold, model):
         "meta": meta,
     }
 
-def _prepare_jobs(df, model, max_tokens, limit):
+def _prepare_jobs(df, model, max_tokens, limit, branches):
     jobs = []
     for i, row in enumerate(df.itertuples(index=True)):
         if limit is not None and i >= limit:
@@ -164,9 +163,12 @@ def _prepare_jobs(df, model, max_tokens, limit):
         if len(choices) < 2 or gold not in letters or not question:
             continue
         record_in = _build_record_in(row_dict, question, choices, letters, gold, model)
-        jobs.append((row.Index, "A", {"question": question, "choices": choices, "gold": gold, "record_in": record_in, "letters": letters}))
-        jobs.append((row.Index, "B", {"question": question, "choices": choices, "gold": gold, "record_in": record_in, "letters": letters}))
-        jobs.append((row.Index, "C", {"question": question, "choices": choices, "gold": gold, "record_in": record_in, "letters": letters}))
+        if "A" in branches:
+            jobs.append((row.Index, "A", {"question": question, "choices": choices, "gold": gold, "record_in": record_in, "letters": letters}))
+        if "B" in branches:
+            jobs.append((row.Index, "B", {"question": question, "choices": choices, "gold": gold, "record_in": record_in, "letters": letters}))
+        if "C" in branches:
+            jobs.append((row.Index, "C", {"question": question, "choices": choices, "gold": gold, "record_in": record_in, "letters": letters}))
     return jobs
 
 def _run_job(args):
@@ -187,22 +189,30 @@ def synth_on_dataset(
     max_tokens: int = DEFAULT_MAX_TOKENS,
     dump_every: int = DUMP_EVERY,
     limit: int | None = None,
+    branches: tuple[str, ...] = DEFAULT_BRANCHES
 ):
     """Generate synthetic A/B/C branches from TSV and write JSONL lines."""
     df = pd.read_csv(in_filename, sep="\t", dtype=str, keep_default_na=False)
-    jobs = _prepare_jobs(df, model, max_tokens, limit)
+    branches = tuple(b for b in (map(str.strip, branches)) if b in {"A","B","C"})
+    if not branches:
+        branches = ("B","C")
+    jobs = _prepare_jobs(df, model, max_tokens, limit, branches)
     os.makedirs(os.path.dirname(out_jsonl) or ".", exist_ok=True)
     f = open(out_jsonl, "a", encoding="utf-8")
     with futures.ThreadPoolExecutor(max_workers=CHUNK_SIZE) as pool:
         args_list = [(index, branch_id, payload, model, max_tokens) for (index, branch_id, payload) in jobs]
 
-        # alternative chunker
-        for k in range(0, len(args_list), CHUNK_SIZE):
+        total_batches = (len(args_list) + CHUNK_SIZE - 1) // CHUNK_SIZE
+        for k in tqdm(range(0, len(args_list), CHUNK_SIZE), total=total_batches, desc="Synthesizing"):
             batch = args_list[k : k + CHUNK_SIZE]
             results = list(pool.map(_run_job, batch))
+
             for index, branch_id, record_in, out in results:
                 f.write(json.dumps({"input": record_in, "output": out}, ensure_ascii=False) + "\n")
+
             if (k // CHUNK_SIZE) % dump_every == 0:
-                f.flush(); f.close()
+                f.flush()
+
+    f.close()
     print(f"Saved to {out_jsonl}. Total inputs: {df.shape[0]}; outputs: {len(jobs)}.")
     return out_jsonl
