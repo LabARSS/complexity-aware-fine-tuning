@@ -16,7 +16,7 @@ class LogitSeqStats:
     every_token_stats: list[list[dict[str, Any]]] = field(default_factory=list)
 
 
-def collect_logit_sequence_stats(logits: list[torch.Tensor]):
+def collect_logit_sequence_stats(logits: list[torch.Tensor], in_batch_idx=0):
     """
     Parameters:
     ----------
@@ -28,7 +28,7 @@ def collect_logit_sequence_stats(logits: list[torch.Tensor]):
     stats = LogitSeqStats()
     for i in range(len(logits)):
         # generated token position, batch_dim
-        token_logits = logits[i][0]
+        token_logits = logits[i][in_batch_idx]
         token_entropy = compute_entropy_from_logits(token_logits)
         stats.entropies.append(token_entropy)
 

@@ -4,7 +4,7 @@ from pathlib import Path
 import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
-from core.complexity_estimation.entropy.estimate_single_token_entropy import estimate_dataset
+from core.complexity_estimation.entropy.estimate_entropy import estimate_dataset  # new import
 from core.utils.correctness import check_answer_correct_mmlu
 from core.utils.device import DEVICE_MAP
 
