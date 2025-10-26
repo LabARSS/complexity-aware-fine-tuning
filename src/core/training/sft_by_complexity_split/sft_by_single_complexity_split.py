@@ -11,6 +11,8 @@ from transformers.models.auto.modeling_auto import AutoModelForCausalLM
 from transformers.models.auto.tokenization_auto import AutoTokenizer
 from transformers.training_args_seq2seq import Seq2SeqTrainingArguments
 
+from peft import LoraConfig, get_peft_model, TaskType
+
 import core.prompts.mmlu_cot_answer as cot_prompts
 import core.prompts.mmlu_single_token_answer as prompts
 from core.training.sft_by_complexity_split.cot_eval_trainer import CoTEvalTrainer
@@ -71,8 +73,40 @@ def get_user_prompt_cot_eval(row):
     options = ast.literal_eval(row["options"])
     return cot_prompts.cot_answer_prompt(question, options)
 
+# helper for default LoRA
+def _build_lora_config(model, lora_kwargs: dict | None) -> LoraConfig:
+    lora_kwargs = lora_kwargs or {}
+    default_target_modules = [
+        "q_proj", "k_proj", "v_proj", "o_proj",
+        "gate_proj", "up_proj", "down_proj",
+    ]
+    target_modules = lora_kwargs.get("target_modules", default_target_modules)
 
-def train_sft_by_complexity_split(out_path, model_id, train_df_path, test_df_paths, training_kwargs):
+    return LoraConfig(
+        r=lora_kwargs.get("r", 16),
+        lora_alpha=lora_kwargs.get("lora_alpha", 32),
+        lora_dropout=lora_kwargs.get("lora_dropout", 0.05),
+        bias=lora_kwargs.get("bias", "none"),
+        task_type=TaskType.CAUSAL_LM,
+        target_modules=target_modules,
+        # Additionaly can be used:
+        # modules_to_save=lora_kwargs.get("modules_to_save"),
+        # use_rslora=lora_kwargs.get("use_rslora", False),
+        # init_lora_weights=lora_kwargs.get("init_lora_weights", True),
+    )
+
+
+def train_sft_by_complexity_split(
+    out_path,
+    model_id,
+    train_df_path,
+    test_df_paths,
+    training_kwargs,
+    *,
+    use_lora: bool = False,        
+    lora_kwargs: dict | None = None, # LoRA params
+):
+    
     if not directory_is_empty(out_path, EPOCHS):
         print("train_sft_by_complexity_split -> out_path not empty", out_path)
         return None
@@ -227,6 +261,15 @@ def train_sft_by_complexity_split(out_path, model_id, train_df_path, test_df_pat
     model = AutoModelForCausalLM.from_pretrained(model_id, device_map=DEVICE_MAP)
     inferred_device_map = model.hf_device_map
     print("\nInferred Device Map:", inferred_device_map)
+    
+    if use_lora:
+        lora_config = _build_lora_config(model, lora_kwargs)
+        model = get_peft_model(model, lora_config)
+        # Удобный лог о числе обучаемых параметров
+        try:
+            model.print_trainable_parameters()
+        except Exception:
+            pass
 
     generation_config = GenerationConfig.from_pretrained(
         model_id,
@@ -253,7 +296,7 @@ def train_sft_by_complexity_split(out_path, model_id, train_df_path, test_df_pat
         save_strategy="epoch",
         overwrite_output_dir=True,
         save_total_limit=1,
-        save_only_model=True,
+        save_only_model=True, # with peft save only adapters
         eval_on_start=True,
         num_train_epochs=EPOCHS,
         lr_scheduler_type="linear",
