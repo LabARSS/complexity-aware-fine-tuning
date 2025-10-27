@@ -5,6 +5,7 @@ from core.training.sft_by_complexity_split.sft_by_single_complexity_split import
 )
 from core.utils.training_memory_sandbox import memory_sandbox_worker, run_in_memory_sandbox
 
+
 TRAIN_POSTFIX = "_train.tsv"
 TEST_POSTFIX = "_test.tsv"
 
@@ -15,7 +16,13 @@ def wrapped_train_sft_by_complexity_split(*args, **kwargs):
 
 
 def train_sft_by_all_complexity_splits(
-    data_folder_path: str, out_path: str, model_id: str, training_kwargs: dict | None = None
+    data_folder_path: str,
+    out_path: str,
+    model_id: str,
+    training_kwargs: dict | None = None,
+    *,                         
+    use_lora: bool = False,      
+    lora_kwargs: dict | None = None, 
 ):
     p = Path(data_folder_path)
 
@@ -38,4 +45,6 @@ def train_sft_by_all_complexity_splits(
             train_df_path=train_df_path,
             test_df_paths=test_df_paths,
             training_kwargs=training_kwargs,
+            use_lora=use_lora,           
+            lora_kwargs=lora_kwargs,     
         )
