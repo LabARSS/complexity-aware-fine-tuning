@@ -5,13 +5,12 @@ from pathlib import Path
 
 import pandas as pd
 from datasets import Dataset, concatenate_datasets
+from peft import LoraConfig, TaskType, get_peft_model
 from transformers.data.data_collator import DataCollatorForTokenClassification
 from transformers.generation.configuration_utils import GenerationConfig
 from transformers.models.auto.modeling_auto import AutoModelForCausalLM
 from transformers.models.auto.tokenization_auto import AutoTokenizer
 from transformers.training_args_seq2seq import Seq2SeqTrainingArguments
-
-from peft import LoraConfig, get_peft_model, TaskType
 
 import core.prompts.mmlu_cot_answer as cot_prompts
 import core.prompts.mmlu_single_token_answer as prompts
@@ -22,10 +21,10 @@ from core.utils.last_checkpoint_dir import get_last_checkpoint_dir
 from core.utils.prepare_dataset import prepare_dataset, prepare_dataset_cot_eval
 from core.utils.seed import set_seed
 
-TRAIN_BATCH_SIZE = 2
+TRAIN_BATCH_SIZE = 16
 EVAL_BATCH_SIZE = 16
 LR = 1e-5
-EPOCHS = 30
+EPOCHS = 20
 
 
 def directory_is_empty(directory: str, expected_epochs: int) -> bool:
@@ -74,12 +73,18 @@ def get_user_prompt_cot_eval(row):
     options = ast.literal_eval(row["options"])
     return cot_prompts.cot_answer_prompt(question, options)
 
+
 # helper for default LoRA
 def _build_lora_config(model, lora_kwargs: dict | None) -> LoraConfig:
     lora_kwargs = lora_kwargs or {}
     default_target_modules = [
-        "q_proj", "k_proj", "v_proj", "o_proj",
-        "gate_proj", "up_proj", "down_proj",
+        "q_proj",
+        "k_proj",
+        "v_proj",
+        "o_proj",
+        "gate_proj",
+        "up_proj",
+        "down_proj",
     ]
     target_modules = lora_kwargs.get("target_modules", default_target_modules)
 
@@ -92,7 +97,7 @@ def _build_lora_config(model, lora_kwargs: dict | None) -> LoraConfig:
         target_modules=target_modules,
         # Additionaly can be used:
         # modules_to_save=lora_kwargs.get("modules_to_save"),
-        # use_rslora=lora_kwargs.get("use_rslora", False),
+        use_rslora=lora_kwargs.get("use_rslora", True),
         # init_lora_weights=lora_kwargs.get("init_lora_weights", True),
     )
 
@@ -104,10 +109,9 @@ def train_sft_by_complexity_split(
     test_df_paths,
     training_kwargs,
     *,
-    use_lora: bool = False,        
-    lora_kwargs: dict | None = None, # LoRA params
+    use_lora: bool = False,
+    lora_kwargs: dict | None = None,  # LoRA params
 ):
-    
     if not directory_is_empty(out_path, EPOCHS):
         print("train_sft_by_complexity_split -> out_path not empty", out_path)
         return None
@@ -262,7 +266,7 @@ def train_sft_by_complexity_split(
     model = AutoModelForCausalLM.from_pretrained(model_id, device_map=DEVICE_MAP)
     inferred_device_map = model.hf_device_map
     print("\nInferred Device Map:", inferred_device_map)
-    
+
     if use_lora:
         lora_config = _build_lora_config(model, lora_kwargs)
         model = get_peft_model(model, lora_config)
@@ -297,7 +301,7 @@ def train_sft_by_complexity_split(
         save_strategy="epoch",
         overwrite_output_dir=True,
         save_total_limit=1,
-        save_only_model=True, # with peft save only adapters
+        save_only_model=True,  # with peft save only adapters
         eval_on_start=True,
         num_train_epochs=EPOCHS,
         lr_scheduler_type="linear",
