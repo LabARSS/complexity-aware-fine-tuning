@@ -14,9 +14,8 @@ from transformers.training_args_seq2seq import Seq2SeqTrainingArguments
 
 import core.prompts.mmlu_cot_answer as cot_prompts
 import core.prompts.mmlu_single_token_answer as prompts
-from core.training.sft_by_complexity_split.cot_eval_trainer import CoTEvalTrainer
 from core.training.callbacks.save_and_log_weights import SaveOnEpochEndAndLogWeightsCallback
-from core.utils.device import DEVICE_MAP
+from core.training.sft_by_complexity_split.cot_eval_trainer import CoTEvalTrainer
 from core.utils.last_checkpoint_dir import get_last_checkpoint_dir
 from core.utils.prepare_dataset import prepare_dataset, prepare_dataset_cot_eval
 from core.utils.seed import set_seed
@@ -120,8 +119,6 @@ def train_sft_by_complexity_split(
         training_kwargs = {}
 
     set_seed()
-
-    print(f"Using device: {DEVICE_MAP}")
 
     print(subprocess.run(["nvidia-smi"], capture_output=True, text=True).stdout)
 
@@ -263,9 +260,7 @@ def train_sft_by_complexity_split(
         tokenizer=tokenizer, padding=True, pad_to_multiple_of=8, return_tensors="pt"
     )
 
-    model = AutoModelForCausalLM.from_pretrained(model_id, device_map=DEVICE_MAP)
-    inferred_device_map = model.hf_device_map
-    print("\nInferred Device Map:", inferred_device_map)
+    model = AutoModelForCausalLM.from_pretrained(model_id)
 
     if use_lora:
         lora_config = _build_lora_config(model, lora_kwargs)
