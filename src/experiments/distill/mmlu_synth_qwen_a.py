@@ -13,12 +13,12 @@ def main():
     in_tsv = root / "data" / "source" / "mmlu_pro_stem.tsv"
     out_dir = root / "data" / "out" / "distillation"
     out_dir.mkdir(parents=True, exist_ok=True)
-    out_jsonl = out_dir / "mmlu_pro_synth_gptoss_f100.jsonl"
+    out_jsonl = out_dir / "mmlu_pro_synth_qwen_f100a.jsonl"
 
     out_path = synth_on_dataset(
         in_filename=str(in_tsv),
         out_jsonl=str(out_jsonl),
-        model="openai/gpt-oss-120b",
+        model="qwen/qwen3-235b-a22b-thinking-2507",
         max_tokens = 16384,
         dump_every = 20,
         limit = 100
