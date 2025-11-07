@@ -18,9 +18,9 @@ if __name__ == "__main__":
         model_id="Qwen/Qwen2.5-3B-Instruct",
         use_lora=True,
         training_kwargs={
-            "per_device_train_batch_size": 16,
-            "per_device_eval_batch_size": 16,
-            "gradient_accumulation_steps": 4,
+            "per_device_train_batch_size": 8,
+            "per_device_eval_batch_size": 8,
+            "gradient_accumulation_steps": 8,
             "learning_rate": 2e-4,
             "lr_scheduler_type": "cosine",
             "warmup_ratio": 0.03,
