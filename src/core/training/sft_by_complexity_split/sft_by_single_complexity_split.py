@@ -281,32 +281,36 @@ def train_sft_by_complexity_split(
     )
     generation_config.do_sample = False
 
-    training_args = Seq2SeqTrainingArguments(
-        seed=42,
-        data_seed=42,
-        output_dir=out_path,
-        per_device_train_batch_size=TRAIN_BATCH_SIZE,
-        per_device_eval_batch_size=EVAL_BATCH_SIZE,
-        bf16=True,
-        bf16_full_eval=True,
-        logging_strategy="epoch",
-        eval_strategy="epoch",
-        batch_eval_metrics=True,
-        report_to="none",
-        save_strategy="epoch",
-        overwrite_output_dir=True,
-        save_total_limit=1,
-        save_only_model=True,  # with peft save only adapters
-        eval_on_start=True,
-        num_train_epochs=EPOCHS,
-        lr_scheduler_type="linear",
-        learning_rate=LR,
-        remove_unused_columns=False,
-        include_for_metrics=["inputs"],
-        generation_num_beams=1,
-        generation_config=generation_config,
-        **training_kwargs,
-    )
+    # Merge default training args with provided kwargs, allowing overrides
+    default_training_args = {
+        "seed": 42,
+        "data_seed": 42,
+        "output_dir": out_path,
+        "per_device_train_batch_size": TRAIN_BATCH_SIZE,
+        "per_device_eval_batch_size": EVAL_BATCH_SIZE,
+        "bf16": True,
+        "bf16_full_eval": True,
+        "logging_strategy": "epoch",
+        "eval_strategy": "epoch",
+        "batch_eval_metrics": True,
+        "report_to": "none",
+        "save_strategy": "epoch",
+        "overwrite_output_dir": True,
+        "save_total_limit": 1,
+        "save_only_model": True,  # with peft save only adapters
+        "eval_on_start": True,
+        "num_train_epochs": EPOCHS,
+        "lr_scheduler_type": "linear",
+        "learning_rate": LR,
+        "remove_unused_columns": False,
+        "include_for_metrics": ["inputs"],
+        "generation_num_beams": 1,
+        "generation_config": generation_config,
+    }
+    # Update with training_kwargs, allowing them to override defaults
+    merged_training_args = {**default_training_args, **training_kwargs}
+
+    training_args = Seq2SeqTrainingArguments(**merged_training_args)
     trainer = CoTEvalTrainer(
         model=model,
         args=training_args,
