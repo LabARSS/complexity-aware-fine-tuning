@@ -1,47 +1,95 @@
-# template prompts for synth-aug-mmlu.py (exp.: explain-mmlu.py)
+ALL_LETTERS = [chr(c) for c in range(ord("A"), ord("Z")+1)]
 
+def render_mc_prompt(question, choices, letters):
+    opts = "\n".join(f"{letters[i]}) {choices[i]}" for i in range(len(choices)))
+    sys_prompt = (
+        'Return STRICT JSON ONLY as {"answer": "<LETTER>"} where <LETTER> '
+        f'is one uppercase letter from {letters}. No extra fields, no code fences.'
+    )
+    user_prompt = f"QUESTION:\n{question}\n\nOPTIONS:\n{opts}\n"
+    return sys_prompt, user_prompt
 
-def p_json_guardrails():
-    return """
-You MUST respond with valid JSON ONLY. Do not include any prose, code fences, or explanations outside JSON.
-If additional context is needed, include it ONLY inside the JSON fields.
-"""
+def render_mc_prompt_b(question, choices, letters, gold_letter):
+    opts = "\n".join(f"{letters[i]}) {choices[i]}" for i in range(len(choices)))
+    wrong_letters = [L for L in letters if L != gold_letter]
+    wrong_list = ", ".join(wrong_letters)
+    sys_prompt = (
+        'Return STRICT JSON ONLY as {"explanation_correct":"...",'
+        '"explanations_incorrect": {"<WRONG_LETTER>": "...", ... }}. '
+        "Do not include Markdown or code fences. "
+        f"Use only the wrong option letters: {wrong_list} as keys in explanations_incorrect."
+    )
+    user_prompt = (
+        f"QUESTION:\n{question}\n\nOPTIONS:\n{opts}\n\n"
+        f"CORRECT ANSWER: {gold_letter}\n"
+        "Explain concisely why the correct option is correct (explanation_correct), "
+        "and for each wrong option letter explain why it is incorrect (explanations_incorrect)."
+    )
+    return sys_prompt, user_prompt
 
-def p_branch_a(letters):
-    return f"""
-Return JSON ONLY with the following schema:
-{{
-  "answer": "{letters}",
-  "rationale": "concise 1-2 sentence justification (no fluff)",
-  "key_steps": ["step1","step2","step3"],
-  "thinking": "step-by-step reasoning tokens leading to the answer"
-}}
-Ensure "answer" is one of {letters}. Keep rationale concise but factual.
-"""
+def render_mc_prompt_c_review(question, choices, letters, gold_letter):
+    opts = "\n".join(f"{letters[i]}) {choices[i]}" for i in range(len(choices)))
+    wrong_letters = [L for L in letters if L != gold_letter]
+    wrong_list = ", ".join(wrong_letters)
+    sys_prompt = (
+        'Return STRICT JSON ONLY as {"explanation_correct":"...",'
+        '"explanations_incorrect": {"<WRONG_LETTER>": "...", ... }}. '
+        "Do not include Markdown or code fences. "
+        f"Use only the wrong option letters: {wrong_list} as keys in explanations_incorrect."
+    )
+    user_prompt = f"QUESTION:\n{question}\n\nOPTIONS:\n{opts}\n"
+    return sys_prompt, user_prompt
 
-def p_branch_b(gold, letters, distractor_tpl):
-    return f"""
-        The correct answer is "{gold}".
-        Return JSON only:
-        {{"correct_answer":"{letters}",
-        "why_correct": "step-by-step reasoning showing why the gold option is correct",
-        "distractor_analysis": {distractor_tpl} }}
-        Each entry in "distractor_analysis" must explain why that option is incorrect.
-        """ 
+def _schema_answer_only(letters):
+    return {
+        "name": "mcq_answer",
+        "strict": True,
+        "schema": {
+            "type": "object",
+            "properties": { "answer": {"type": "string", "enum": letters} },
+            "required": ["answer"],
+            "additionalProperties": False
+        }
+    }
 
-def p_branch_c_one(allowed):
-    return f"""
-        Return JSON only:
-        {{"answer":"{allowed}","rationale":"short justification (1-2 sentences)","key_steps":["step1","step2"], "thinking": "step-by-step reasoning tokens used to pick the answer"}}
-        """
+def _schema_explanations_only(letters, gold_letter):
+    wrong = [L for L in letters if L != gold_letter]
+    return {
+        "name": "mcq_branch_b",
+        "strict": True,
+        "schema": {
+            "type": "object",
+            "properties": {
+                "explanation_correct": {"type": "string"},
+                "explanations_incorrect": {
+                    "type": "object",
+                    "properties": { k: {"type": "string"} for k in wrong },
+                    "required": wrong,
+                    "additionalProperties": False
+                }
+            },
+            "required": ["explanation_correct", "explanations_incorrect"],
+            "additionalProperties": False
+        }
+    }
 
-def p_branch_c_two(model_ans, gold, allowed, distractor_tpl):
-    return f"""
-    Your previous answer: "{model_ans}".
-    Gold (correct) answer: "{gold}".
-    Return JSON only:
-    {{"model_answer":"{allowed}",
-    "is_correct": true/false,
-    "error_analysis": "step-by-step reasoning of the mistake (if any) or null",
-    "distractor_analysis": {distractor_tpl} }}
-    """
+def _schema_c_review(letters, gold_letter):
+    wrong = [L for L in letters if L != gold_letter]
+    return {
+        "name": "mcq_branch_c_review",
+        "strict": True,
+        "schema": {
+            "type": "object",
+            "properties": {
+                "explanation_correct": {"type": "string"},
+                "explanations_incorrect": {
+                    "type": "object",
+                    "properties": { k: {"type": "string"} for k in wrong },
+                    "required": wrong,
+                    "additionalProperties": False
+                }
+            },
+            "required": ["explanation_correct", "explanations_incorrect"],
+            "additionalProperties": False
+        }
+    }
