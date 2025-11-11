@@ -49,14 +49,13 @@ class CoTEvalTrainer(Seq2SeqTrainer):
         if is_cot_eval:
             self.args.predict_with_generate = True
 
-        # Add question_id and cot to ignore_keys so they don't get passed to model.generate()
-        # but still get gathered by Trainer for metrics (via include_for_metrics=["inputs"])
-        if ignore_keys is None:
-            ignore_keys = []
-        ignore_keys = list(ignore_keys) + ["question_id", "cot"]
+        # Remove question_id and cot from inputs before passing to model
+        # They will still be available in eval_pred.inputs for metrics computation
+        # because the Trainer gathers them via include_for_metrics=["inputs"]
+        inputs_filtered = {k: v for k, v in inputs.items() if k not in ["question_id", "cot"]}
 
         loss, generated_tokens, labels = super().prediction_step(
-            model, inputs, prediction_loss_only, ignore_keys, **gen_kwargs
+            model, inputs_filtered, prediction_loss_only, ignore_keys, **gen_kwargs
         )
 
         self.args.predict_with_generate = False
