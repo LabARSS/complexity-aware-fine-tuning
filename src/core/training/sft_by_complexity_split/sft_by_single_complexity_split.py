@@ -272,7 +272,6 @@ def train_sft_by_complexity_split(
         )
         for i, test_df in enumerate(test_dfs)
     }
-    test_tokenwise_ds_dict["combined"] = concatenate_datasets(list(test_tokenwise_ds_dict.values()))
     # CoT eval
     test_cot_ds_dict: dict[str, Dataset] = {
         f"g{i}_cot": prepare_dataset_cot_eval(
@@ -283,7 +282,6 @@ def train_sft_by_complexity_split(
         )
         for i, test_df in enumerate(test_dfs)
     }
-    test_cot_ds_dict["combined_cot"] = concatenate_datasets(list(test_cot_ds_dict.values()))
     # Combined eval dataset
     test_combined_ds_dict = {**test_tokenwise_ds_dict, **test_cot_ds_dict}
 
