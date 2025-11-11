@@ -1,9 +1,12 @@
 import ast
 import json
 import subprocess
+from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 import pandas as pd
+import torch
 from datasets import Dataset, concatenate_datasets
 from peft import LoraConfig, TaskType, get_peft_model
 from transformers.data.data_collator import DataCollatorForTokenClassification
@@ -24,6 +27,26 @@ TRAIN_BATCH_SIZE = 16
 EVAL_BATCH_SIZE = 16
 LR = 1e-5
 EPOCHS = 20
+
+
+@dataclass
+class DataCollatorWithQuestionID(DataCollatorForTokenClassification):
+    """Custom data collator that preserves question_id and cot flag as metadata."""
+
+    def __call__(self, features: list[dict[str, Any]], return_tensors=None) -> dict[str, Any]:
+        # Extract metadata fields before calling parent collator
+        question_ids = [f.pop("question_id") for f in features]
+        # cot flag may not exist in all datasets (only in CoT eval datasets)
+        is_cot = [f.pop("cot", False) for f in features]
+
+        # Let parent collator handle the tensor fields
+        batch = super().__call__(features, return_tensors)
+
+        # Add metadata back as tensors (will be gathered by Trainer)
+        batch["question_id"] = torch.tensor(question_ids, dtype=torch.long)
+        batch["cot"] = torch.tensor(is_cot, dtype=torch.bool)
+
+        return batch
 
 
 def directory_is_empty(directory: str, expected_epochs: int) -> bool:
@@ -128,11 +151,12 @@ def train_sft_by_complexity_split(
     metrics_accum_total = 0
     incorrect_answers: list = []
 
-    def compute_metrics(eval_pred, compute_result, is_cot_eval, question_ids: list | None):
+    def compute_metrics(eval_pred, compute_result):
         nonlocal metrics_accum_correct, metrics_accum_total, incorrect_answers
 
-        assert isinstance(question_ids, list)
-        assert len(question_ids) != 0
+        # Extract metadata from inputs (already gathered by Trainer)
+        question_ids = eval_pred.inputs["question_id"].cpu().tolist()
+        is_cot_eval = eval_pred.inputs["cot"][0].item()
 
         predictions, labels, inputs = eval_pred.predictions, eval_pred.label_ids, eval_pred.inputs["input_ids"]
 
@@ -256,7 +280,7 @@ def train_sft_by_complexity_split(
         print(test_ds[0])
 
     tokenizer.pad_token = tokenizer.eos_token
-    data_collator = DataCollatorForTokenClassification(
+    data_collator = DataCollatorWithQuestionID(
         tokenizer=tokenizer, padding=True, pad_to_multiple_of=8, return_tensors="pt"
     )
 
@@ -277,7 +301,7 @@ def train_sft_by_complexity_split(
         top_p=None,
         top_k=None,
         do_sample=False,
-        max_new_tokens=1024,
+        max_new_tokens=2048,
     )
     generation_config.do_sample = False
 
