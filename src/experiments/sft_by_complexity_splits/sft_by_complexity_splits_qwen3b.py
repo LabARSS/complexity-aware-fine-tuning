@@ -4,6 +4,7 @@ from pathlib import Path
 from core.training.sft_by_complexity_split.sft_by_all_complexity_splits import (
     train_sft_by_all_complexity_splits,
 )
+from core.training.sft_by_complexity_split.sft_by_single_complexity_split import GLOBAL_BATCH_SIZE, batch_size_config
 
 if __name__ == "__main__":
     freeze_support()
@@ -18,9 +19,8 @@ if __name__ == "__main__":
         model_id="Qwen/Qwen2.5-3B-Instruct",
         use_lora=True,
         training_kwargs={
-            "per_device_train_batch_size": 8,
+            **batch_size_config(global_batch_size=GLOBAL_BATCH_SIZE, per_device_train_batch_size=8),
             "per_device_eval_batch_size": 8,
-            "gradient_accumulation_steps": 8,
             "learning_rate": 2e-4,
             "lr_scheduler_type": "cosine",
             "warmup_ratio": 0.03,

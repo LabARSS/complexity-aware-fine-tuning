@@ -28,6 +28,19 @@ EVAL_BATCH_SIZE = 16
 LR = 1e-5
 EPOCHS = 20
 
+GLOBAL_BATCH_SIZE = 256
+
+
+def batch_size_config(global_batch_size: int, per_device_train_batch_size: int):
+    gradient_accumulation_steps = global_batch_size // per_device_train_batch_size
+    assert global_batch_size % per_device_train_batch_size == 0, (
+        f"Global batch size {global_batch_size} is not divisible by per device batch size {per_device_train_batch_size}"
+    )
+    return {
+        "per_device_train_batch_size": per_device_train_batch_size,
+        "gradient_accumulation_steps": gradient_accumulation_steps,
+    }
+
 
 @dataclass
 class DataCollatorWithQuestionID(DataCollatorForTokenClassification):
