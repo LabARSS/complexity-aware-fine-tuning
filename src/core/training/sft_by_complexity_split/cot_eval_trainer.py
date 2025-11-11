@@ -78,14 +78,15 @@ class CoTEvalTrainer(Seq2SeqTrainer):
         eval_loop_output = super().evaluation_loop(*args, **kwargs)
 
         assert eval_loop_output.metrics is not None
-        assert prefixed_accuracy in eval_loop_output.metrics
-        assert prefixed_incorrect_answers in eval_loop_output.metrics
-
-        incorrect_answers = eval_loop_output.metrics.pop(prefixed_incorrect_answers)
-        assert isinstance(incorrect_answers, list)
 
         # Only save incorrect answers on the main process to avoid duplicates
         if self.is_world_process_zero():
+            assert prefixed_accuracy in eval_loop_output.metrics
+            assert prefixed_incorrect_answers in eval_loop_output.metrics
+
+            incorrect_answers = eval_loop_output.metrics.pop(prefixed_incorrect_answers)
+            assert isinstance(incorrect_answers, list)
+
             for item in incorrect_answers:
                 item["dataset"] = metric_key_prefix
                 item["epoch"] = epoch
@@ -96,7 +97,7 @@ class CoTEvalTrainer(Seq2SeqTrainer):
             )
             self.file_initialized = True
 
-        if eval_loop_output.metrics[prefixed_accuracy] == 0:
-            self.skip_eval_datasets[metric_key_prefix] = epoch
+            if eval_loop_output.metrics[prefixed_accuracy] == 0:
+                self.skip_eval_datasets[metric_key_prefix] = epoch
 
         return eval_loop_output
