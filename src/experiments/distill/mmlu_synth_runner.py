@@ -1,5 +1,6 @@
-import sys
 from pathlib import Path
+import sys
+
 from core.distillation.synth_aug_mmlu import synth_on_dataset
 
 def _path_model(m: str) -> str:
@@ -24,10 +25,10 @@ def main():
         "moonshotai/kimi-k2-thinking" : ("A", "B", "C")
     }
 
-    limit = 100
+    limit = 10
     max_tokens = 16384
-    dump_every = 20
-    chunk_size = 30
+    dump_every = 2
+    chunk_size = 10
 
     ds_stem = in_tsv.stem
 
@@ -35,10 +36,15 @@ def main():
         model_path = _path_model(model)
         print(f"\n==> Model {model} | branches={branches}")
 
+        #FIRSTLY: A, then C
+        a_file = out_dir / f"{ds_stem}_synth_{model_path}_a_f{limit}.jsonl"
+
         for b in branches:
             out_name = f"{ds_stem}_synth_{model_path}_{b.lower()}_f{limit}.jsonl"
             out_jsonl = out_dir / out_name
             print(f"  -> Branch {b}: writing to {out_name}")
+
+            a_jsonl_path = str(a_file) if b == "C" else None
 
             synth_on_dataset(
                 in_filename=str(in_tsv),
@@ -49,6 +55,7 @@ def main():
                 limit=limit,
                 branch=b,
                 chunk_size=chunk_size,
+                a_jsonl_path=a_jsonl_path,
             )
 
 if __name__ == "__main__":

@@ -7,23 +7,36 @@ from tqdm import tqdm
 from core.utils.openrouter import openrouter
 from core.utils.chunker import chunker
 
+from core.prompts.mmlu_single_token_answer import (
+    single_token_sys_prompt,
+    single_token_answer_prompt,
+)
+
 from core.prompts.mmlu_branches_aug import (
-    render_mc_prompt,
-    render_mc_prompt_b,
-    render_mc_prompt_c_review,
-    _schema_answer_only,
-    _schema_explanations_only,
-    _schema_c_review,
+    option_ids,
+    explain_sys_prompt,
+    explain_user_prompt,
+    error_review_sys_prompt,
+    error_review_messages,
 )
 
 ALL_LETTERS = [chr(c) for c in range(ord("A"), ord("Z")+1)]
-
 logging.basicConfig(level=logging.INFO, format="%(levelname)s:%(message)s")
 
-# -------------------- utils --------------------
+
+# ------------ utils ------------
 def letters_for(n: int):
     n = max(0, min(int(n), 26))
     return ALL_LETTERS[:n]
+
+def parse_options(s):
+    try:
+        lst = ast.literal_eval(s)
+        return list(map(str, lst))
+    except Exception:
+        s = (s or "").strip().strip("[]")
+        parts = [p.strip().strip("'").strip('"') for p in s.split(",")]
+        return [p for p in parts if p]
 
 def norm_letter_dyn(x, letters):
     s = ("" if x is None else str(x)).strip().upper()
@@ -37,31 +50,20 @@ def norm_letter_dyn(x, letters):
             return letters[i-1]
     return ""
 
-def parse_options(s):
-    try:
-        lst = ast.literal_eval(s)
-        return list(map(str, lst))
-    except Exception:
-        s = (s or "").strip().strip("[]")
-        parts = [p.strip().strip("'").strip('"') for p in s.split(",")]
-        return [p for p in parts if p]
+def _subject_from_row(row_dict: dict) -> str | None:
+    return (row_dict.get("category") or row_dict.get("subject") or row_dict.get("src") or "").strip() or None
 
-def _coerce_json(txt: str) -> dict:
-    s = re.sub(r"^```(?:json)?\s*|\s*```$", "", (txt or "").strip(), flags=re.S)
-    i, j = s.find("{"), s.rfind("}")
-    if i != -1 and j != -1 and j > i:
-        s = s[i:j+1]
-    s = re.sub(r"\bTrue\b", "true", s)
-    s = re.sub(r"\bFalse\b", "false", s)
-    s = re.sub(r"\bNone\b", "null", s)
-    s = re.sub(r",(\s*[}\]])", r"\1", s)
-    return json.loads(s)
 
-# -------------------- branch A --------------------
-def ask_mcq_once(question: str, choices: list[str], gold_letter: str,
-                 model: str, max_tokens: int) -> dict:
+# ------------ branch A ------------
+def ask_mcq_once(question: str,
+                 choices: list[str],
+                 gold_letter: str,
+                 model: str,
+                 max_tokens: int,
+                 subject: str | None) -> dict:
     letters = letters_for(len(choices))
-    sys_prompt, user_prompt = render_mc_prompt(question, choices, letters)
+    sys_prompt = single_token_sys_prompt(subject)
+    user_prompt = single_token_answer_prompt(question, choices)
 
     completion = openrouter.chat.completions.create(
         model=model,
@@ -70,28 +72,14 @@ def ask_mcq_once(question: str, choices: list[str], gold_letter: str,
             {"role": "user",   "content": user_prompt},
         ],
         max_tokens=max_tokens,
-        extra_body={
-            "provider": {"require_parameters": True},
-            "response_format": {"type": "json_schema", "json_schema": _schema_answer_only(letters)},
-            "include_reasoning": True,
-            "reasoning": {"enabled": True},
-        }
+        extra_body={ "include_reasoning": True }
     )
 
     msg = completion.choices[0].message
-    txt = msg.content or ""
+    content = msg.content or ""
     reasoning_text = getattr(msg, "reasoning", None)
 
-    try:
-        j = json.loads(txt)
-    except Exception:
-        try:
-            j = _coerce_json(txt)
-        except Exception:
-            logging.warning("JSON parse failed; returning empty object")
-            j = {}
-
-    ans_letter = norm_letter_dyn(j.get("answer"), letters)
+    ans_letter = content
     is_correct = (ans_letter == gold_letter)
 
     return {
@@ -101,17 +89,23 @@ def ask_mcq_once(question: str, choices: list[str], gold_letter: str,
         "answer": ans_letter,
         "is_correct": is_correct,
         "thinking": reasoning_text or "",
-        "raw": {"content": txt},
+        "raw": {"content": content},
     }
 
-def _branch_a(q, choices, gold, model, max_tokens):
-    return ask_mcq_once(q, choices, gold, model=model, max_tokens=max_tokens)
+def _branch_a(q, choices, gold, model, max_tokens, subject):
+    return ask_mcq_once(q, choices, gold, model=model, max_tokens=max_tokens, subject=subject)
 
-# -------------------- branch B --------------------
-def ask_mcq_explain(question: str, choices: list[str], gold_letter: str,
-                    model: str, max_tokens: int) -> dict:
+
+# ------------ branch B ------------
+def ask_mcq_explain(question: str,
+                    choices: list[str],
+                    gold_letter: str,
+                    model: str,
+                    max_tokens: int,
+                    subject: str | None) -> dict:
     letters = letters_for(len(choices))
-    sys_prompt, user_prompt = render_mc_prompt_b(question, choices, letters, gold_letter)
+    sys_prompt = explain_sys_prompt(subject)
+    user_prompt = explain_user_prompt(question, choices, gold_letter)
 
     completion = openrouter.chat.completions.create(
         model=model,
@@ -120,157 +114,132 @@ def ask_mcq_explain(question: str, choices: list[str], gold_letter: str,
             {"role": "user",   "content": user_prompt},
         ],
         max_tokens=max_tokens,
-        extra_body={
-            "provider": {"require_parameters": True},
-            "response_format": {"type": "json_schema", "json_schema": _schema_explanations_only(letters, gold_letter)},
-            "include_reasoning": True,
-            "reasoning": {"enabled": True},
-        }
+        extra_body={ "include_reasoning": True }
     )
 
     msg = completion.choices[0].message
-    txt = msg.content or ""
+    content = msg.content or ""
     reasoning_text = getattr(msg, "reasoning", None) or ""
 
-    try:
-        j = json.loads(txt)
-    except Exception:
-        try:
-            j = _coerce_json(txt)
-        except Exception:
-            logging.warning("JSON parse failed; returning empty object")
-            j = {}
-
-    expl_corr = (j.get("explanation_correct") or "").strip()
-    expl_inc = j.get("explanations_incorrect") or {}
-    if gold_letter in expl_inc:
-        expl_inc.pop(gold_letter, None)
-    wrong_set = set(L for L in letters if L != gold_letter)
-    expl_inc = {k: v for k, v in expl_inc.items() if k in wrong_set}
-
     return {
         "letters": letters,
         "options": {letters[i]: choices[i] for i in range(len(choices))},
         "gold": gold_letter,
-        "explanation_correct": expl_corr,
-        "explanations_incorrect": expl_inc,
+        "response": content,
         "thinking": reasoning_text,
-        "raw": {"content": txt},
+        "raw": {"content": content},
     }
 
-def _branch_b(q, choices, gold, model, max_tokens):
-    return ask_mcq_explain(q, choices, gold, model=model, max_tokens=max_tokens)
+def _branch_b(q, choices, gold, model, max_tokens, subject):
+    return ask_mcq_explain(q, choices, gold, model=model, max_tokens=max_tokens, subject=subject)
 
-# -------------------- branch C --------------------
-def ask_mcq_chain(question: str, choices: list[str], gold_letter: str,
-                  model: str, max_tokens: int) -> dict:
+
+# ------------ branch C ------------
+def ask_mcq_error_review(question: str,
+                         choices: list[str],
+                         gold_letter: str,
+                         model_letter_from_a: str,
+                         prev_reasoning_from_a: str,
+                         model: str,
+                         max_tokens: int,
+                         subject: str | None) -> dict:
     letters = letters_for(len(choices))
-
-    sys1, user1 = render_mc_prompt(question, choices, letters)
-    comp1 = openrouter.chat.completions.create(
-        model=model,
-        messages=[
-            {"role": "system", "content": sys1},
-            {"role": "user",   "content": user1},
-        ],
-        max_tokens=max_tokens,
-        extra_body={
-            "provider": {"require_parameters": True},
-            "response_format": {"type": "json_schema", "json_schema": _schema_answer_only(letters)},
-            "include_reasoning": True,
-            "reasoning": {"enabled": True},
-        }
+    sys_prompt = error_review_sys_prompt(subject)
+    extra_msgs = error_review_messages(
+        question=question,
+        options=choices,
+        model_letter=model_letter_from_a or "",
+        gold_letter=gold_letter,
+        previous_reasoning=prev_reasoning_from_a or "",
     )
-    msg1 = comp1.choices[0].message
-    txt1 = msg1.content or ""
-    reasoning1 = getattr(msg1, "reasoning", None) or ""
 
-    try:
-        j1 = json.loads(txt1)
-    except Exception:
-        try:
-            j1 = _coerce_json(txt1)
-        except Exception:
-            logging.warning("JSON parse failed (step1); returning empty object")
-            j1 = {}
-
-    ans_letter = norm_letter_dyn(j1.get("answer"), letters)
-    is_correct = (ans_letter == gold_letter)
-
-    sys2, user2_q = render_mc_prompt_c_review(question, choices, letters, gold_letter)
-    assistant_answer_content = txt1 if txt1.strip().startswith("{") else json.dumps({"answer": ans_letter or ""}, ensure_ascii=False)
-
-    comp2 = openrouter.chat.completions.create(
+    completion = openrouter.chat.completions.create(
         model=model,
-        messages=[
-            {"role": "system", "content": sys2},
-            {"role": "user",   "content": user2_q},
-            {"role": "assistant", "content": assistant_answer_content},
-            {"role": "user", "content": "```Here is your previous reasoning```\n" + (reasoning1 or "")},
-            {"role": "user", "content":
-                f"Gold answer is {gold_letter}. "
-                "Explain briefly why it is correct (explanation_correct), and for each wrong letter explain why it is incorrect (explanations_incorrect). "
-                "Do not include the correct letter among explanations_incorrect."
-            },
-        ],
+        messages=[{"role": "system", "content": sys_prompt}] + extra_msgs,
         max_tokens=max_tokens,
-        extra_body={
-            "provider": {"require_parameters": True},
-            "response_format": {"type": "json_schema", "json_schema": _schema_c_review(letters, gold_letter)},
-            "include_reasoning": True,
-            "reasoning": {"enabled": True},
-        }
+        extra_body={ "include_reasoning": True }
     )
-    msg2 = comp2.choices[0].message
-    txt2 = msg2.content or ""
-    reasoning2 = getattr(msg2, "reasoning", None) or ""
 
-    try:
-        j2 = json.loads(txt2)
-    except Exception:
-        try:
-            j2 = _coerce_json(txt2)
-        except Exception:
-            logging.warning("JSON parse failed (step2); returning empty object")
-            j2 = {}
-
-    expl_corr = (j2.get("explanation_correct") or "").strip()
-    expl_inc = j2.get("explanations_incorrect") or {}
-    if gold_letter in expl_inc:
-        expl_inc.pop(gold_letter, None)
-    wrong_set = set(L for L in letters if L != gold_letter)
-    expl_inc = {k: v for k, v in expl_inc.items() if k in wrong_set}
+    msg = completion.choices[0].message
+    content = msg.content or ""
+    reasoning_text = getattr(msg, "reasoning", None) or ""
 
     return {
         "letters": letters,
         "options": {letters[i]: choices[i] for i in range(len(choices))},
         "gold": gold_letter,
-        "first_pass": {
-            "answer": ans_letter,
-            "is_correct": is_correct,
-            "thinking": reasoning1,
-        },
-        "review": {
-            "explanation_correct": expl_corr,
-            "explanations_incorrect": expl_inc,
-            "thinking": reasoning2,
-        },
-        "raw": {"content_step1": txt1, "content_step2": txt2},
+        "model_answer": (model_letter_from_a or "").upper(),
+        "response": content,
+        "thinking": reasoning_text,
+        "raw": {"content": content},
     }
 
-def _branch_c(q, choices, gold, model, max_tokens):
-    return ask_mcq_chain(q, choices, gold, model=model, max_tokens=max_tokens)
+def _branch_c(q, choices, gold, model, max_tokens, subject, prev_answer, prev_reasoning):
+    return ask_mcq_error_review(
+        question=q,
+        choices=choices,
+        gold_letter=gold,
+        model_letter_from_a=prev_answer,
+        prev_reasoning_from_a=prev_reasoning,
+        model=model,
+        max_tokens=max_tokens,
+        subject=subject,
+    )
 
-# -------------------- dataset generation --------------------
+
+# ------------ helpers for branch C ------------
+def _load_incorrect_from_branch_a(a_jsonl_path: str, expected_model: str | None) -> dict[int, dict]:
+    bad: dict[int, dict] = {}
+    with open(a_jsonl_path, "r", encoding="utf-8") as f:
+        for line in f:
+            try:
+                rec = json.loads(line)
+            except Exception:
+                continue
+            inp = rec.get("input") or {}
+            out = rec.get("output") or {}
+            if "error" in out:
+                continue
+            if expected_model is not None and (inp.get("model") != expected_model):
+                continue
+            row_id = inp.get("row_id")
+            if row_id is None:
+                continue
+            gold = (inp.get("gold") or "").strip().upper()
+            ans = (out.get("answer") or "").strip().upper()
+            is_correct = out.get("is_correct")
+            if is_correct is None:
+                is_correct = (ans == gold)
+            if not is_correct:
+                bad[int(row_id)] = {
+                    "model_answer": ans,
+                    "thinking": out.get("thinking") or "",
+                }
+    return bad
+
+
+# ------------ dataset -------------
 def _run_job(job):
-    row_id, question, choices, gold_letter, model, max_tokens, branch = job
+    (
+        row_id,
+        question,
+        choices,
+        gold_letter,
+        model,
+        max_tokens,
+        branch,
+        subject,
+        prev_answer,
+        prev_reasoning,
+    ) = job
+
     try:
         if branch == "A":
-            out = _branch_a(question, choices, gold_letter, model=model, max_tokens=max_tokens)
+            out = _branch_a(question, choices, gold_letter, model, max_tokens, subject)
         elif branch == "B":
-            out = _branch_b(question, choices, gold_letter, model=model, max_tokens=max_tokens)
+            out = _branch_b(question, choices, gold_letter, model, max_tokens, subject)
         else:
-            out = _branch_c(question, choices, gold_letter, model=model, max_tokens=max_tokens)
+            out = _branch_c(question, choices, gold_letter, model, max_tokens, subject, prev_answer, prev_reasoning)
     except Exception as e:
         logging.warning(f"[idx={row_id}] error: {e}")
         out = {"error": str(e)}
@@ -278,13 +247,18 @@ def _run_job(job):
     letters = letters_for(len(choices))
     record_in = {
         "row_id": row_id,
+        "subject": subject or "",
         "question": question,
         "options": {letters[i]: choices[i] for i in range(len(choices))},
         "gold": gold_letter,
         "model": model,
         "branch": branch,
     }
+    if branch == "C":
+        record_in["model_answer_from_A"] = (prev_answer or "")
+
     return row_id, record_in, out
+
 
 def synth_on_dataset(
     in_filename: str,
@@ -295,15 +269,24 @@ def synth_on_dataset(
     limit: int | None,
     branch: str,
     chunk_size: int,
+    a_jsonl_path: str | None,
 ):
-    assert branch in {"A","B","C"}, "branch must be one of {'A','B','C'}"
+    assert branch in {"A", "B", "C"}
+    if branch == "C":
+        assert a_jsonl_path and os.path.exists(a_jsonl_path), "Branch C requires a valid path to branch-A results (a_jsonl_path)."
 
     df = pd.read_csv(in_filename, sep="\t", dtype=str, keep_default_na=False)
-
     total_rows = len(df) if limit is None else min(len(df), int(limit))
     total_chunks = max(1, math.ceil(total_rows / max(1, chunk_size)))
 
     os.makedirs(os.path.dirname(out_jsonl) or ".", exist_ok=True)
+
+    # pre-load A-incorrects for branch C
+    a_incorrect_map: dict[int, dict] = {}
+    ids_for_c: set[int] = set()
+    if branch == "C":
+        a_incorrect_map = _load_incorrect_from_branch_a(a_jsonl_path, expected_model=model)
+        ids_for_c = set(a_incorrect_map.keys())
 
     written = 0
     stop = False
@@ -319,20 +302,35 @@ def synth_on_dataset(
                     stop = True
                     break
 
-                q = (row.get("question") or "").strip()
-                choices = parse_options(row.get("options") or "[]")
+                if index >= total_rows:
+                    stop = True
+                    break
+
+                row_dict = row.to_dict()
+                subject = _subject_from_row(row_dict)
+
+                q = (row_dict.get("question") or "").strip()
+                choices = parse_options(row_dict.get("options") or "[]")
                 letters = letters_for(len(choices))
                 if len(letters) < 2 or not q:
                     continue
 
                 gold_letter = (
-                    norm_letter_dyn(row.get("answer"), letters)
-                    or norm_letter_dyn(row.get("answer_index"), letters)
+                    norm_letter_dyn(row_dict.get("answer"), letters)
+                    or norm_letter_dyn(row_dict.get("answer_index"), letters)
                 )
                 if not gold_letter:
                     continue
 
-                args_list.append((index, q, choices, gold_letter, model, max_tokens, branch))
+                prev_ans = None
+                prev_thinking = None
+                if branch == "C":
+                    if index not in ids_for_c:
+                        continue
+                    prev_ans = a_incorrect_map[index].get("model_answer")
+                    prev_thinking = a_incorrect_map[index].get("thinking")
+
+                args_list.append((index, q, choices, gold_letter, model, max_tokens, branch, subject, prev_ans, prev_thinking))
 
             if not args_list:
                 continue

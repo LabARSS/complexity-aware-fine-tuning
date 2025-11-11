@@ -1,95 +1,59 @@
-ALL_LETTERS = [chr(c) for c in range(ord("A"), ord("Z")+1)]
+from typing import List, Optional
 
-def render_mc_prompt(question, choices, letters):
-    opts = "\n".join(f"{letters[i]}) {choices[i]}" for i in range(len(choices)))
-    sys_prompt = (
-        'Return STRICT JSON ONLY as {"answer": "<LETTER>"} where <LETTER> '
-        f'is one uppercase letter from {letters}. No extra fields, no code fences.'
+option_ids = [chr(c) for c in range(ord("A"), ord("Z") + 1)]
+
+
+## DUPLICATED FROM mmlu_single_token_answer.py
+# def single_token_sys_prompt(subject: str | None = None):
+#     if subject is not None:
+#         sys_msg = f"The following are multiple choice questions about {subject}."
+#     else:
+#         sys_msg = "The following are multiple choice questions."
+
+#     sys_msg += " Choose a correct option letter. Answer with a single symbol. Do not print anything else."
+#     return sys_msg
+
+# def single_token_answer_prompt(question: str, options: List[str]):
+#     options_str = "\n".join([f"{option_id}. {answer}".strip() for option_id, answer in zip(option_ids, options)])
+#     user_prompt = f"Question: {question.strip()}\nOptions:\n{options_str}\n"
+#     return user_prompt
+
+def explain_sys_prompt(subject: Optional[str] = None) -> str:
+    if subject:
+        base = f"The following are multiple choice questions about {subject}."
+    else:
+        base = "The following are multiple choice questions."
+    return base + " Given the correct option letter, explain why other options are wrong and the given option is correct."
+
+def explain_user_prompt(question: str, options: List[str], gold_letter: str) -> str:
+    opts = "\n".join([f"{oid}. {text}".strip() for oid, text in zip(option_ids, options)])
+    return (
+        f"Question: {question.strip()}\n"
+        f"Options:\n{opts}\n"
+        f"Correct option: {gold_letter}\n"
+        f"Keep the explanation concise but specific."
     )
-    user_prompt = f"QUESTION:\n{question}\n\nOPTIONS:\n{opts}\n"
-    return sys_prompt, user_prompt
 
-def render_mc_prompt_b(question, choices, letters, gold_letter):
-    opts = "\n".join(f"{letters[i]}) {choices[i]}" for i in range(len(choices)))
-    wrong_letters = [L for L in letters if L != gold_letter]
-    wrong_list = ", ".join(wrong_letters)
-    sys_prompt = (
-        'Return STRICT JSON ONLY as {"explanation_correct":"...",'
-        '"explanations_incorrect": {"<WRONG_LETTER>": "...", ... }}. '
-        "Do not include Markdown or code fences. "
-        f"Use only the wrong option letters: {wrong_list} as keys in explanations_incorrect."
-    )
-    user_prompt = (
-        f"QUESTION:\n{question}\n\nOPTIONS:\n{opts}\n\n"
-        f"CORRECT ANSWER: {gold_letter}\n"
-        "Explain concisely why the correct option is correct (explanation_correct), "
-        "and for each wrong option letter explain why it is incorrect (explanations_incorrect)."
-    )
-    return sys_prompt, user_prompt
+def error_review_sys_prompt(subject: Optional[str] = None) -> str:
+    if subject:
+        base = f"The following are multiple choice questions about {subject}."
+    else:
+        base = "The following are multiple choice questions."
+    return base + " Given your previous answer and the correct option letter, analyze the error: explain why the chosen option is wrong and why the correct option is right."
 
-def render_mc_prompt_c_review(question, choices, letters, gold_letter):
-    opts = "\n".join(f"{letters[i]}) {choices[i]}" for i in range(len(choices)))
-    wrong_letters = [L for L in letters if L != gold_letter]
-    wrong_list = ", ".join(wrong_letters)
-    sys_prompt = (
-        'Return STRICT JSON ONLY as {"explanation_correct":"...",'
-        '"explanations_incorrect": {"<WRONG_LETTER>": "...", ... }}. '
-        "Do not include Markdown or code fences. "
-        f"Use only the wrong option letters: {wrong_list} as keys in explanations_incorrect."
-    )
-    user_prompt = f"QUESTION:\n{question}\n\nOPTIONS:\n{opts}\n"
-    return sys_prompt, user_prompt
-
-def _schema_answer_only(letters):
-    return {
-        "name": "mcq_answer",
-        "strict": True,
-        "schema": {
-            "type": "object",
-            "properties": { "answer": {"type": "string", "enum": letters} },
-            "required": ["answer"],
-            "additionalProperties": False
-        }
-    }
-
-def _schema_explanations_only(letters, gold_letter):
-    wrong = [L for L in letters if L != gold_letter]
-    return {
-        "name": "mcq_branch_b",
-        "strict": True,
-        "schema": {
-            "type": "object",
-            "properties": {
-                "explanation_correct": {"type": "string"},
-                "explanations_incorrect": {
-                    "type": "object",
-                    "properties": { k: {"type": "string"} for k in wrong },
-                    "required": wrong,
-                    "additionalProperties": False
-                }
-            },
-            "required": ["explanation_correct", "explanations_incorrect"],
-            "additionalProperties": False
-        }
-    }
-
-def _schema_c_review(letters, gold_letter):
-    wrong = [L for L in letters if L != gold_letter]
-    return {
-        "name": "mcq_branch_c_review",
-        "strict": True,
-        "schema": {
-            "type": "object",
-            "properties": {
-                "explanation_correct": {"type": "string"},
-                "explanations_incorrect": {
-                    "type": "object",
-                    "properties": { k: {"type": "string"} for k in wrong },
-                    "required": wrong,
-                    "additionalProperties": False
-                }
-            },
-            "required": ["explanation_correct", "explanations_incorrect"],
-            "additionalProperties": False
-        }
-    }
+def error_review_messages(question: str,
+                          options: List[str],
+                          model_letter: str,
+                          gold_letter: str,
+                          previous_reasoning: str) -> list[dict]:
+    opts = "\n".join([f"{oid}. {text}".strip() for oid, text in zip(option_ids, options)])
+    return [
+        {"role": "user", "content": f"Question: {question.strip()}\nOptions:\n{opts}\n"},
+        {"role": "assistant", "content": f"Answer: {model_letter}"},
+        {"role": "user", "content": "Here is your previous reasoning:\n" + (previous_reasoning or "")},
+        {"role": "user", "content": (
+            f"Gold option: {gold_letter}.\n"
+            f"Briefly explain why {gold_letter} is correct and why {model_letter} is wrong. "
+            f"If your previous reasoning had mistakes, correct them. Be precise and concise."
+        )},
+    ]
