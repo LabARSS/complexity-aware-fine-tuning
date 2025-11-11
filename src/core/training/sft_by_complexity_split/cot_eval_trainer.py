@@ -1,4 +1,3 @@
-import gc
 import os
 from typing import Any, Optional, Union
 
@@ -15,23 +14,26 @@ class CoTEvalTrainer(Seq2SeqTrainer):
         super().__init__(*args, **kwargs)
 
         self.invalid_answers_save_path = invalid_answers_save_path
-        if os.path.exists(self.invalid_answers_save_path):
+        # Only remove on main process to avoid race conditions
+        if self.is_world_process_zero() and os.path.exists(self.invalid_answers_save_path):
             os.remove(self.invalid_answers_save_path)
         self.file_initialized = False
 
         self.skip_eval_datasets = {}
 
-        self.is_cot_eval = False
-        self.question_ids = []
-        compute_metrics = self.compute_metrics
+        # Wrap compute_metrics to run only on main process
+        if self.compute_metrics is not None:
+            original_compute_metrics = self.compute_metrics
 
-        def compute_metrics_enhanced(eval_pred, compute_result):
-            out = compute_metrics(eval_pred, compute_result, self.is_cot_eval, self.question_ids)
-            gc.collect()
-            torch.cuda.empty_cache()
-            return out
+            def compute_metrics_wrapper(eval_pred, compute_result):
+                # Only compute metrics on main process to save resources
+                if self.is_world_process_zero():
+                    return original_compute_metrics(eval_pred, compute_result)
+                else:
+                    # Return empty dict on other processes
+                    return {}
 
-        self.compute_metrics = compute_metrics_enhanced
+            self.compute_metrics = compute_metrics_wrapper
 
     def prediction_step(
         self,
@@ -41,13 +43,14 @@ class CoTEvalTrainer(Seq2SeqTrainer):
         ignore_keys: Optional[list[str]] = None,
         **gen_kwargs,
     ) -> tuple[Optional[float], Optional[torch.Tensor], Optional[torch.Tensor]]:
-        self.is_cot_eval = False
-        if "cot" in inputs:
-            self.is_cot_eval = True
-            inputs.pop("cot")
+        # Check if this is CoT evaluation (all samples in batch have same mode)
+        is_cot_eval = inputs.get("cot", torch.tensor([False]))[0].item()
+
+        if is_cot_eval:
             self.args.predict_with_generate = True
 
-        self.question_ids = inputs.pop("question_id").cpu().tolist()
+        # Note: question_id and cot stay in inputs and will be gathered by Trainer
+        # along with other inputs (when include_for_metrics=["inputs"])
 
         loss, generated_tokens, labels = super().prediction_step(
             model, inputs, prediction_loss_only, ignore_keys, **gen_kwargs
@@ -55,7 +58,7 @@ class CoTEvalTrainer(Seq2SeqTrainer):
 
         self.args.predict_with_generate = False
 
-        return None if self.is_cot_eval else loss, generated_tokens, labels
+        return None if is_cot_eval else loss, generated_tokens, labels
 
     def evaluation_loop(self, *args, **kwargs) -> EvalLoopOutput:
         metric_key_prefix = kwargs["metric_key_prefix"]
@@ -79,15 +82,17 @@ class CoTEvalTrainer(Seq2SeqTrainer):
         incorrect_answers = eval_loop_output.metrics.pop(prefixed_incorrect_answers)
         assert isinstance(incorrect_answers, list)
 
-        for item in incorrect_answers:
-            item["dataset"] = metric_key_prefix
-            item["epoch"] = epoch
+        # Only save incorrect answers on the main process to avoid duplicates
+        if self.is_world_process_zero():
+            for item in incorrect_answers:
+                item["dataset"] = metric_key_prefix
+                item["epoch"] = epoch
 
-        new_incorrect_answers_df = pd.DataFrame(incorrect_answers)
-        new_incorrect_answers_df.to_csv(
-            self.invalid_answers_save_path, sep="\t", mode="a", header=not self.file_initialized, index=False
-        )
-        self.file_initialized = True
+            new_incorrect_answers_df = pd.DataFrame(incorrect_answers)
+            new_incorrect_answers_df.to_csv(
+                self.invalid_answers_save_path, sep="\t", mode="a", header=not self.file_initialized, index=False
+            )
+            self.file_initialized = True
 
         if eval_loop_output.metrics[prefixed_accuracy] == 0:
             self.skip_eval_datasets[metric_key_prefix] = epoch
