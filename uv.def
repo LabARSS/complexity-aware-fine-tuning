@@ -1,0 +1,28 @@
+Bootstrap: docker
+From: ghcr.io/astral-sh/uv:python3.12-bookworm-slim
+
+%post
+    # Update and install packages
+    apt update
+    apt install -y --no-install-recommends \
+        cmake \
+        build-essential
+
+    # Clean up
+    apt clean
+    rm -rf /var/lib/apt/lists/*
+
+    # Create working directory
+    mkdir -p /src
+    chmod 755 /src
+
+%environment
+    export WORKDIR=/src
+
+%runscript
+    cd /src
+    exec /usr/bin/bash "$@"
+
+%startscript
+    cd /src
+    exec /usr/bin/bash "$@"
