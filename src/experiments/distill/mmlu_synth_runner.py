@@ -16,13 +16,13 @@ def main():
     root = Path(__file__).resolve().parents[3]
 
     in_tsv = root / "data" / "source" / "mmlu_pro_stem.tsv"
-    out_dir = root / "data" / "out" / "distillation"
+    out_dir = root / "data" / "out"  / "distillation"
     out_dir.mkdir(parents=True, exist_ok=True)
 
     models_to_branches = {
-        "openai/gpt-oss-120b": ("A","B","C"),
-        "qwen/qwen3-235b-a22b-thinking-2507": ("A", "B", "C"),
-        "moonshotai/kimi-k2-thinking" : ("A", "B", "C")
+        "openai/gpt-oss-120b": ("A","B"),
+        "qwen/qwen3-235b-a22b-thinking-2507": ("A", "B"),
+        "moonshotai/kimi-k2-thinking" : ("A", "B")
     }
 
     limit = 10

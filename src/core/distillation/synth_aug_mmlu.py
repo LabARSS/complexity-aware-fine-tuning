@@ -1,4 +1,4 @@
-import os, ast, json, re, logging, math
+import os, ast, json, re, logging, math, time
 from concurrent import futures
 
 import pandas as pd
@@ -53,6 +53,18 @@ def norm_letter_dyn(x, letters):
 def _subject_from_row(row_dict: dict) -> str | None:
     return (row_dict.get("category") or row_dict.get("subject") or row_dict.get("src") or "").strip() or None
 
+def _extract_letter_from_text(txt: str, letters: list[str]) -> str:
+    # extract first allow letter from text
+    t = (txt or "").strip()
+    t = re.sub(r"^```(?:[a-zA-Z]+)?\s*|\s*```$", "", t, flags=re.S)
+    for ch in t:
+        if ch.upper() in letters:
+            return ch.upper()
+    m = re.search(r"(?<!\d)(\d{1,2})(?!\d)", t)
+    if m:
+        return norm_letter_dyn(m.group(1), letters)
+    return ""
+
 
 # ------------ branch A ------------
 def ask_mcq_once(question: str,
@@ -65,6 +77,7 @@ def ask_mcq_once(question: str,
     sys_prompt = single_token_sys_prompt(subject)
     user_prompt = single_token_answer_prompt(question, choices)
 
+
     completion = openrouter.chat.completions.create(
         model=model,
         messages=[
@@ -72,20 +85,25 @@ def ask_mcq_once(question: str,
             {"role": "user",   "content": user_prompt},
         ],
         max_tokens=max_tokens,
+        temperature=0,
         extra_body={ "include_reasoning": True }
     )
-
     msg = completion.choices[0].message
     content = msg.content or ""
     reasoning_text = getattr(msg, "reasoning", None)
 
-    ans_letter = content
-    is_correct = (ans_letter == gold_letter)
+    ans_letter = _extract_letter_from_text(content, letters)
+    if not ans_letter:
+        ans_letter = (content.strip()[:1] or "").upper()
+        if ans_letter not in letters:
+            ans_letter = ""
+
+    is_correct = (ans_letter.upper() == (gold_letter or "").upper())
 
     return {
         "letters": letters,
         "options": {letters[i]: choices[i] for i in range(len(choices))},
-        "gold": gold_letter,
+        "gold": (gold_letter or "").upper(),
         "answer": ans_letter,
         "is_correct": is_correct,
         "thinking": reasoning_text or "",
@@ -114,9 +132,9 @@ def ask_mcq_explain(question: str,
             {"role": "user",   "content": user_prompt},
         ],
         max_tokens=max_tokens,
+        temperature=0,
         extra_body={ "include_reasoning": True }
     )
-
     msg = completion.choices[0].message
     content = msg.content or ""
     reasoning_text = getattr(msg, "reasoning", None) or ""
@@ -124,7 +142,7 @@ def ask_mcq_explain(question: str,
     return {
         "letters": letters,
         "options": {letters[i]: choices[i] for i in range(len(choices))},
-        "gold": gold_letter,
+        "gold": (gold_letter or "").upper(),
         "response": content,
         "thinking": reasoning_text,
         "raw": {"content": content},
@@ -157,6 +175,7 @@ def ask_mcq_error_review(question: str,
         model=model,
         messages=[{"role": "system", "content": sys_prompt}] + extra_msgs,
         max_tokens=max_tokens,
+        temperature=0,
         extra_body={ "include_reasoning": True }
     )
 
@@ -250,7 +269,7 @@ def _run_job(job):
         "subject": subject or "",
         "question": question,
         "options": {letters[i]: choices[i] for i in range(len(choices))},
-        "gold": gold_letter,
+        "gold": (gold_letter or "").upper(),
         "model": model,
         "branch": branch,
     }
