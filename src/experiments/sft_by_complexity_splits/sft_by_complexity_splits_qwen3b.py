@@ -19,7 +19,7 @@ if __name__ == "__main__":
         model_id="Qwen/Qwen2.5-3B-Instruct",
         use_lora=True,
         training_kwargs={
-            **batch_size_config(global_batch_size=GLOBAL_BATCH_SIZE, per_device_train_batch_size=8),
+            **batch_size_config(global_batch_size=GLOBAL_BATCH_SIZE, per_device_train_batch_size=4),
             "per_device_eval_batch_size": 32,
             "learning_rate": 2e-4,
             "lr_scheduler_type": "cosine",
