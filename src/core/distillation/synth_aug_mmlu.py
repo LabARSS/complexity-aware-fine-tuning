@@ -21,7 +21,8 @@ from core.prompts.mmlu_branches_aug import (
 )
 
 ALL_LETTERS = [chr(c) for c in range(ord("A"), ord("Z")+1)]
-logging.basicConfig(level=logging.INFO, format="%(levelname)s:%(message)s")
+logging.basicConfig(level=logging.WARNING, format="%(levelname)s:%(message)s")
+logging.getLogger("httpx").setLevel(logging.WARNING)
 
 
 # ------------ utils ------------
