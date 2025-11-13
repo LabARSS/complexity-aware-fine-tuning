@@ -49,7 +49,7 @@ def error_review_messages(question: str,
     opts = "\n".join([f"{oid}. {text}".strip() for oid, text in zip(option_ids, options)])
     return [
         {"role": "user", "content": f"Question: {question.strip()}\nOptions:\n{opts}\n"},
-        {"role": "assistant", "content": f"Answer: {model_letter}"},
+        {"role": "assistant", "content": f"{previous_reasoning}\nAnswer: {model_letter}"},
         {"role": "user", "content": "Here is your previous reasoning:\n" + (previous_reasoning or "")},
         {"role": "user", "content": (
             f"Gold option: {gold_letter}.\n"

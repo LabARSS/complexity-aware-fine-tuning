@@ -30,13 +30,8 @@ def letters_for(n: int):
     return ALL_LETTERS[:n]
 
 def parse_options(s):
-    try:
-        lst = ast.literal_eval(s)
-        return list(map(str, lst))
-    except Exception:
-        s = (s or "").strip().strip("[]")
-        parts = [p.strip().strip("'").strip('"') for p in s.split(",")]
-        return [p for p in parts if p]
+    lst = ast.literal_eval(s)
+    return list(map(str, lst))
 
 def norm_letter_dyn(x, letters):
     s = ("" if x is None else str(x)).strip().upper()
@@ -51,7 +46,7 @@ def norm_letter_dyn(x, letters):
     return ""
 
 def _subject_from_row(row_dict: dict) -> str | None:
-    return (row_dict.get("category") or row_dict.get("subject") or row_dict.get("src") or "").strip() or None
+    return (row_dict.get("base_cluster") or row_dict.get("category") or row_dict.get("subject") or row_dict.get("src") or "").strip() or None
 
 def _extract_letter_from_text(txt: str, letters: list[str]) -> str:
     # extract first allow letter from text
@@ -72,7 +67,8 @@ def ask_mcq_once(question: str,
                  gold_letter: str,
                  model: str,
                  max_tokens: int,
-                 subject: str | None) -> dict:
+                 subject: str | None,
+                 temperature: float = 0) -> dict:
     letters = letters_for(len(choices))
     sys_prompt = single_token_sys_prompt(subject)
     user_prompt = single_token_answer_prompt(question, choices)
@@ -85,7 +81,7 @@ def ask_mcq_once(question: str,
             {"role": "user",   "content": user_prompt},
         ],
         max_tokens=max_tokens,
-        temperature=0,
+        temperature=temperature,
         extra_body={ "include_reasoning": True }
     )
     msg = completion.choices[0].message
@@ -110,8 +106,8 @@ def ask_mcq_once(question: str,
         "raw": {"content": content},
     }
 
-def _branch_a(q, choices, gold, model, max_tokens, subject):
-    return ask_mcq_once(q, choices, gold, model=model, max_tokens=max_tokens, subject=subject)
+def _branch_a(q, choices, gold, model, max_tokens, subject, temperature):
+    return ask_mcq_once(q, choices, gold, model=model, max_tokens=max_tokens, subject=subject, temperature=temperature)
 
 
 # ------------ branch B ------------
@@ -120,7 +116,8 @@ def ask_mcq_explain(question: str,
                     gold_letter: str,
                     model: str,
                     max_tokens: int,
-                    subject: str | None) -> dict:
+                    subject: str | None,
+                    temperature: float = 0) -> dict:
     letters = letters_for(len(choices))
     sys_prompt = explain_sys_prompt(subject)
     user_prompt = explain_user_prompt(question, choices, gold_letter)
@@ -132,7 +129,7 @@ def ask_mcq_explain(question: str,
             {"role": "user",   "content": user_prompt},
         ],
         max_tokens=max_tokens,
-        temperature=0,
+        temperature=temperature,
         extra_body={ "include_reasoning": True }
     )
     msg = completion.choices[0].message
@@ -148,8 +145,8 @@ def ask_mcq_explain(question: str,
         "raw": {"content": content},
     }
 
-def _branch_b(q, choices, gold, model, max_tokens, subject):
-    return ask_mcq_explain(q, choices, gold, model=model, max_tokens=max_tokens, subject=subject)
+def _branch_b(q, choices, gold, model, max_tokens, subject, temperature):
+    return ask_mcq_explain(q, choices, gold, model=model, max_tokens=max_tokens, subject=subject, temperature=temperature)
 
 
 # ------------ branch C ------------
@@ -160,7 +157,8 @@ def ask_mcq_error_review(question: str,
                          prev_reasoning_from_a: str,
                          model: str,
                          max_tokens: int,
-                         subject: str | None) -> dict:
+                         subject: str | None,
+                         temperature: float = 0) -> dict:
     letters = letters_for(len(choices))
     sys_prompt = error_review_sys_prompt(subject)
     extra_msgs = error_review_messages(
@@ -175,7 +173,7 @@ def ask_mcq_error_review(question: str,
         model=model,
         messages=[{"role": "system", "content": sys_prompt}] + extra_msgs,
         max_tokens=max_tokens,
-        temperature=0,
+        temperature=temperature,
         extra_body={ "include_reasoning": True }
     )
 
@@ -193,7 +191,7 @@ def ask_mcq_error_review(question: str,
         "raw": {"content": content},
     }
 
-def _branch_c(q, choices, gold, model, max_tokens, subject, prev_answer, prev_reasoning):
+def _branch_c(q, choices, gold, model, max_tokens, subject, prev_answer, prev_reasoning, temperature):
     return ask_mcq_error_review(
         question=q,
         choices=choices,
@@ -203,6 +201,7 @@ def _branch_c(q, choices, gold, model, max_tokens, subject, prev_answer, prev_re
         model=model,
         max_tokens=max_tokens,
         subject=subject,
+        temperature=temperature,
     )
 
 
@@ -250,15 +249,16 @@ def _run_job(job):
         subject,
         prev_answer,
         prev_reasoning,
+        temperature,
     ) = job
 
     try:
         if branch == "A":
-            out = _branch_a(question, choices, gold_letter, model, max_tokens, subject)
+            out = _branch_a(question, choices, gold_letter, model, max_tokens, subject, temperature)
         elif branch == "B":
-            out = _branch_b(question, choices, gold_letter, model, max_tokens, subject)
+            out = _branch_b(question, choices, gold_letter, model, max_tokens, subject, temperature)
         else:
-            out = _branch_c(question, choices, gold_letter, model, max_tokens, subject, prev_answer, prev_reasoning)
+            out = _branch_c(question, choices, gold_letter, model, max_tokens, subject, prev_answer, prev_reasoning, temperature)
     except Exception as e:
         logging.warning(f"[idx={row_id}] error: {e}")
         out = {"error": str(e)}
@@ -289,6 +289,7 @@ def synth_on_dataset(
     branch: str,
     chunk_size: int,
     a_jsonl_path: str | None,
+    temperature: float = 0, # [warning]: temperature for all branches
 ):
     assert branch in {"A", "B", "C"}
     if branch == "C":
@@ -349,7 +350,7 @@ def synth_on_dataset(
                     prev_ans = a_incorrect_map[index].get("model_answer")
                     prev_thinking = a_incorrect_map[index].get("thinking")
 
-                args_list.append((index, q, choices, gold_letter, model, max_tokens, branch, subject, prev_ans, prev_thinking))
+                args_list.append((index, q, choices, gold_letter, model, max_tokens, branch, subject, prev_ans, prev_thinking, temperature))
 
             if not args_list:
                 continue

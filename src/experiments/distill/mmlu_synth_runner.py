@@ -29,6 +29,7 @@ def main():
     max_tokens = 16384
     dump_every = 2
     chunk_size = 10
+    temps = {"A": 0.0, "B": 0.0, "C": 0.0}
 
     ds_stem = in_tsv.stem
 
@@ -36,7 +37,7 @@ def main():
         model_path = _path_model(model)
         print(f"\n==> Model {model} | branches={branches}")
 
-        #FIRSTLY: A, then C
+        #FIRSTLY A, then C
         a_file = out_dir / f"{ds_stem}_synth_{model_path}_a_f{limit}.jsonl"
 
         for b in branches:
@@ -56,6 +57,7 @@ def main():
                 branch=b,
                 chunk_size=chunk_size,
                 a_jsonl_path=a_jsonl_path,
+                temperature=temps[b],
             )
 
 if __name__ == "__main__":
