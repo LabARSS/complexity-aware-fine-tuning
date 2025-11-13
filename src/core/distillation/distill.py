@@ -60,7 +60,7 @@ def distill_on_dataset(
         df[field_ans_correct] = False
     if field_response not in df.columns:
         df[field_response] = ""
-    if field_response not in df.columns:
+    if field_ans not in df.columns:
         df[field_ans] = ""
 
     with futures.ThreadPoolExecutor(max_workers=chunk_size) as pool:
