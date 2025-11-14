@@ -16,6 +16,7 @@ from peft import LoraConfig, get_peft_model, TaskType
 import core.prompts.mmlu_cot_answer as cot_prompts
 import core.prompts.mmlu_single_token_answer as prompts
 from core.training.sft_by_complexity_split.cot_eval_trainer import CoTEvalTrainer
+from core.training.callbacks.save_and_log_weights import SaveOnEpochEndAndLogWeightsCallback
 from core.utils.device import DEVICE_MAP
 from core.utils.last_checkpoint_dir import get_last_checkpoint_dir
 from core.utils.prepare_dataset import prepare_dataset, prepare_dataset_cot_eval
@@ -316,6 +317,13 @@ def train_sft_by_complexity_split(
         compute_metrics=compute_metrics,
         processing_class=tokenizer,
         invalid_answers_save_path=str(Path(out_path).joinpath("incorrect_answers.tsv")),
+    )
+
+    trainer.add_callback(
+        SaveOnEpochEndAndLogWeightsCallback(
+            output_dir=out_path,
+            save_full_model_for_non_lora=False,
+        )
     )
 
     trainer.train()
