@@ -1,17 +1,18 @@
 import os
 from concurrent import futures
+from typing import Callable, cast
 
 import pandas as pd
+from pydraconf import PydraConfig
 from tqdm import tqdm
 
-from reasoning_fine_tune.prompts.mmlu_cot_answer import answer_marker, cot_answer_prompt, cot_sys_prompt
+from reasoning_fine_tune.prompts.mmlu_cot_answer import answer_marker
 from reasoning_fine_tune.utils.openrouter import openrouter
-from reasoning_fine_tune.utils.validation import validate_mmlu_answer
 
 chunk_size = 20
 
 
-def call_remote_llm(args):
+def call_remote_llm(args: tuple[str, str, int, str, int]) -> tuple[int, str] | None:
     sys_prompt, user_prompt, index, model, max_tokens = args
     try:
         messages = [
@@ -26,18 +27,19 @@ def call_remote_llm(args):
         return None
 
 
+class DistillConfig(PydraConfig):
+    in_filename: str
+    out_filename: str
+    check_answer_correct: Callable[[pd.Series, str], bool]
+    model: str
+    dump_every: int = 500
+    max_tokens: int = 16384
+    get_sys_prompt: Callable[[pd.Series], str]
+    get_user_prompt: Callable[[pd.Series], str]
+
+
 def distill_on_dataset(
-    in_filename,
-    out_filename,
-    get_subject_from_row,
-    get_question_from_row,
-    get_options_from_row,
-    check_answer_correct,
-    dump_every=500,
-    max_tokens=8192,
-    model="deepseek/deepseek-chat-v3-0324",
-    get_sys_prompt=cot_sys_prompt,
-    get_user_prompt=cot_answer_prompt,
+    config: DistillConfig,
 ):
     invalid_answers = 0
     processed_rows = 0
@@ -46,15 +48,21 @@ def distill_on_dataset(
     field_ans = "distill_answer"
     field_ans_correct = "distill_ans_correct"
 
-    if os.path.exists(out_filename):
-        print("Found an existing DF. Appending...")
-        df = pd.read_csv(out_filename, sep="\t", dtype={field_response: "str", field_ans: "str"}, keep_default_na=False)
-    else:
-        df = pd.read_csv(
-            in_filename,
-            sep="\t",
-        )
+    file_type = os.path.splitext(config.in_filename)[1]
 
+    if file_type == ".jsonl":
+        df = pd.read_json(config.out_filename, lines=True)
+    else:
+        if os.path.exists(config.out_filename):
+            print("Found an existing DF. Appending...")
+            df = pd.read_csv(
+                config.out_filename, sep="\t", dtype={field_response: "str", field_ans: "str"}, keep_default_na=False
+            )
+        else:
+            df = pd.read_csv(
+                config.in_filename,
+                sep="\t",
+            )
     # print(df.dtypes)
 
     if field_ans_correct not in df.columns:
@@ -65,7 +73,7 @@ def distill_on_dataset(
         df[field_ans] = ""
 
     with futures.ThreadPoolExecutor(max_workers=chunk_size) as pool:
-        pooled_requests_args_list = []
+        pooled_requests_args_list: list[tuple[str, str, int, str, int]] = []
 
         for index, row in tqdm(df.iterrows(), total=df.shape[0]):
             if row[field_ans_correct]:
@@ -74,9 +82,11 @@ def distill_on_dataset(
             processed_rows += 1
 
             if len(pooled_requests_args_list) < chunk_size:
-                sys_prompt = get_sys_prompt(get_subject_from_row(row))
-                user_prompt = get_user_prompt(get_question_from_row(row), get_options_from_row(row))
-                pooled_requests_args_list.append((sys_prompt, user_prompt, index, model, max_tokens))
+                sys_prompt = config.get_sys_prompt(row)
+                user_prompt = config.get_user_prompt(row)
+                pooled_requests_args_list.append(
+                    (sys_prompt, user_prompt, cast(int, index), config.model, config.max_tokens)
+                )
 
                 if index != (df.shape[0] - 1):
                     continue
@@ -101,19 +111,25 @@ def distill_on_dataset(
                 if answer_marker_end != -1 and answer_marker_start != -1:
                     extracted_answer = response[answer_marker_start + len(answer_marker[0]) : answer_marker_end]
 
-                if validate_mmlu_answer(extracted_answer):
+                try:
                     df.at[index, field_ans] = extracted_answer
-                    df.at[index, field_ans_correct] = check_answer_correct(df.iloc[index], extracted_answer)
-                else:
+                    df.at[index, field_ans_correct] = config.check_answer_correct(df.iloc[index], extracted_answer)
+                except Exception:
                     invalid_answers += 1
 
                 # print(
                 #     f"response: {response}\nextracted_answer: {extracted_answer}\ncorrect:{df.at[index, field_ans_correct]}\n\n"
                 # )
 
-            if processed_rows % dump_every == 0:
-                df.to_csv(out_filename, sep="\t", index=False)
+            if processed_rows % config.dump_every == 0:
+                if file_type == ".jsonl":
+                    df.to_json(config.out_filename, lines=True, orient="records")
+                else:
+                    df.to_csv(config.out_filename, sep="\t", index=False)
 
-    df.to_csv(out_filename, sep="\t", index=False)
-    print(f"Processed dataset {out_filename}. Total entries: {df.shape[0]}. Invalid answers: {invalid_answers}")
+    if file_type == ".jsonl":
+        df.to_json(config.out_filename, lines=True, orient="records")
+    else:
+        df.to_csv(config.out_filename, sep="\t", index=False)
+    print(f"Processed dataset {config.out_filename}. Total entries: {df.shape[0]}. Invalid answers: {invalid_answers}")
     return df
