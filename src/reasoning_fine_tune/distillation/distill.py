@@ -121,15 +121,19 @@ def distill_on_dataset(
                 except Exception:
                     invalid_answers += 1
 
-                # print(
-                #     f"response: {response}\nextracted_answer: {extracted_answer}\ncorrect:{df.at[index, field_ans_correct]}\n\n"
-                # )
+                if index < 10:
+                    print(
+                        f"response: {response}\nextracted_answer: {extracted_answer}\ncorrect:{df.at[index, field_ans_correct]}\n\n"
+                    )
 
             if processed_rows % config.dump_every == 0:
                 if file_type == ".jsonl":
                     df.to_json(config.out_filename, lines=True, orient="records")
                 else:
                     df.to_csv(config.out_filename, sep="\t", index=False)
+
+                print(f"Processing dataset {config.out_filename}... Processed: {processed_rows}/{df.shape[0]}. Invalid answers: {invalid_answers}")
+    
 
     if file_type == ".jsonl":
         df.to_json(config.out_filename, lines=True, orient="records")

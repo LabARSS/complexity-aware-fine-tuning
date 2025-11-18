@@ -15,6 +15,7 @@ class MaverickConfig(DistillConfig):
     check_answer_correct: Callable[[pd.Series, str], bool] = check_answer_correct_gsm8k
     get_sys_prompt: Callable[[pd.Series], str] = cot_sys_prompt_from_row
     get_user_prompt: Callable[[pd.Series], str] = cot_answer_prompt_from_row
+    dump_every: int = 100
 
 
 if __name__ == "__main__":
