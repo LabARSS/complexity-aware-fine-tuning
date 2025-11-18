@@ -8,6 +8,7 @@ def cot_sys_prompt_from_row(row: pd.Series):
     return sys_msg
 
 
-def cot_answer_prompt_from_row(row: pd.Series):
-    assert isinstance(row["question"], str)
-    return row["question"]
+def cot_answer_prompt_from_row(row: pd.Series) -> str:
+    question = row["question"]
+    assert isinstance(question, str)
+    return question

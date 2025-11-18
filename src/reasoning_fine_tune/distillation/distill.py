@@ -50,14 +50,18 @@ def distill_on_dataset(
 
     file_type = os.path.splitext(config.in_filename)[1]
 
-    if file_type == ".jsonl":
-        df = pd.read_json(config.out_filename, lines=True)
-    else:
-        if os.path.exists(config.out_filename):
-            print("Found an existing DF. Appending...")
+    
+    if os.path.exists(config.out_filename):
+        print("Found an existing DF. Appending...")
+        if file_type == ".jsonl":
+            df = pd.read_json(config.out_filename, lines=True)
+        else:   
             df = pd.read_csv(
-                config.out_filename, sep="\t", dtype={field_response: "str", field_ans: "str"}, keep_default_na=False
-            )
+            config.out_filename, sep="\t", dtype={field_response: "str", field_ans: "str"}, keep_default_na=False
+        )
+    else:
+        if file_type == ".jsonl":
+            df = pd.read_json(config.in_filename, lines=True)
         else:
             df = pd.read_csv(
                 config.in_filename,
