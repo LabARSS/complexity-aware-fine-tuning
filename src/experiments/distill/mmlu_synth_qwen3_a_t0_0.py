@@ -8,7 +8,7 @@ def main():
 
     synth_on_dataset(
         in_filename=Path(__file__).parent.joinpath("../../../data/source/mmlu_pro_stem_shuffled.tsv").resolve(),
-        out_jsonl=Path(__file__).parent.joinpath("../../../data/out/distillation/temperature_changes/mmlu_synth_gptoss_a_t0_0.jsonl").resolve(),
+        out_jsonl=Path(__file__).parent.joinpath("../../../data/out/distillation/temperature_changes/mmlu_synth_qwen3_a_t0_0.jsonl").resolve(),
         model="qwen/qwen3-235b-a22b-thinking-2507",
         max_tokens=16384,
         dump_every=1000,
