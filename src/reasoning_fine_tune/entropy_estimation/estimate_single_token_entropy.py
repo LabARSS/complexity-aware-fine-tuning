@@ -136,7 +136,7 @@ def estimate_dataset(config: EstimateDatasetConfig):
 
         if index < 5:
             print(
-                f"Answer: {answer}\nExtracted answer: {extracted_answer}\nAnswer position: {extracted_answer_position}/{len(outputs.scores)} \nEntropy: {df.at[index, field_entropy_value]}\nis_correct: {df.at[index, field_ans_correct]}\n\n\n"
+                f"Answer: {answer}\nExtracted answer: {extracted_answer}\nAnswer position: {extracted_answer_position}/{len(outputs.scores)}\nExtracted answer token: {answer_raw[extracted_answer_position]} ({tokenizer.decode(answer_raw[extracted_answer_position].unsqueeze(0))})\nEntropy: {df.at[index, field_entropy_value]}\nis_correct: {df.at[index, field_ans_correct]}\n\n\n"
             )
 
         if cast(int, index) % config.dump_every == 0:
