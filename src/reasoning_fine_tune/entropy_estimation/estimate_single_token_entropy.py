@@ -4,6 +4,7 @@ from typing import Callable, cast
 
 import pandas as pd
 import torch
+from pydantic.config import ConfigDict
 from pydraconf.base_config import PydraConfig
 from tqdm import tqdm
 from transformers import AutoModelForCausalLM, AutoTokenizer
@@ -13,6 +14,8 @@ from reasoning_fine_tune.prompts.gsm8k_cot_answer import answer_marker
 
 
 class EstimateDatasetConfig(PydraConfig):
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
     in_filename: str
     out_filename: str
     dump_every: int = 100
