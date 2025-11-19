@@ -83,6 +83,26 @@ class Trainer:
             print("Exception during from_pretrained:", repr(e), flush=True)
             logging.exception("Exception in from_pretrained")
             raise
+        
+        # LoRA wrapping
+        if getattr(self.cfg, "use_lora", False):
+            try:
+                from peft import LoraConfig, get_peft_model
+            except ImportError:
+                logging.error("use_lora=True, но пакет `peft` не установлен. Установи `pip install peft`.")
+                raise
+
+            lora_config = LoraConfig(
+                r=self.cfg.lora_r,
+                lora_alpha=self.cfg.lora_alpha,
+                lora_dropout=self.cfg.lora_dropout,
+                bias="none",
+                task_type="CAUSAL_LM",
+                target_modules=list(self.cfg.lora_target_modules),
+            )
+            self.model = get_peft_model(self.model, lora_config)
+            logging.info("Model wrapped with LoRA.")
+            self.model.print_trainable_parameters()
 
         try:
             # Try to enable gradient checkpointing if possible
@@ -112,40 +132,66 @@ class Trainer:
             raise
 
     # prompt formatting
-    def format_prompt_qa(self, row: pd.Series, include_answer: bool = True) -> str:
-        try:
-            options = literal_eval(row["options"])
-            # display: "1. option0", "2. option1", ...
-            formatted_options = "\n".join([f"{i + 1}. {opt}" for i, opt in enumerate(options)])
-            N = len(options)
+    def format_prompt_qa(self, row: pd.Series, include_answer: bool = True, new_format: bool = True) -> str:
+        if new_format:
+            try:
+                question = str(row["question"]).strip()
+            except Exception as e:
+                logging.debug(f"Row without 'question' field: {e}")
+                return None
 
-            sys_msg = cot_sys_prompt(self.cfg.use_cot)
-            t = self.cfg.prompt_tokens
-            prompt = (
-                f"{t['system_start']}\n{sys_msg}{t['system_end']}\n"
-                f"{t['user_start']}\nQuestion: {row['question']}\nOptions:\n{formatted_options}\n"
-            )
-            if self.cfg.use_cot:
-                prompt += "Please analyze step by step and provide the answer."
+            answer = None
+            if "answer" in row.index and pd.notna(row["answer"]):
+                answer = str(row["answer"]).strip()
+            reasoning = None
+            if self.cfg.use_cot and "reasoning" in row.index and pd.notna(row["reasoning"]):
+                reasoning = str(row["reasoning"]).strip()
+
+            if not include_answer:
+                return question
+
+            if answer is None:
+                return None
+
+            if self.cfg.use_cot and reasoning:
+                return f"{question}\n{reasoning}\n{ANSWER_MARKER[0]}{answer}{ANSWER_MARKER[1]}"
             else:
-                prompt += f"Please analyze and provide the answer with only one number in {ANSWER_MARKER[0]}number{ANSWER_MARKER[1]}. "
+                return f"{question}\n{ANSWER_MARKER[0]}{answer}{ANSWER_MARKER[1]}"
 
-            prompt += t["user_end"] + "\n" + t["assistant_start"]
+        else:
+            try:
+                options = literal_eval(row["options"])
+                # display: "1. option0", "2. option1", ...
+                formatted_options = "\n".join([f"{i + 1}. {opt}" for i, opt in enumerate(options)])
+                N = len(options)
 
-            if include_answer:
-                if self.cfg.use_cot and "distill_response" in row.index and pd.notna(row["distill_response"]):
-                    prompt += f"\n{row['distill_response']}{t['assistant_end']}"
-                elif "answer_index" in row.index and pd.notna(row["answer_index"]):
-                    # answer_index is expected to be zero-based already
-                    prompt += (
-                        f"\n{ANSWER_MARKER[0]}{int(row['answer_index']) + 1}{ANSWER_MARKER[1]}{t['assistant_end']}"
-                    )
+                sys_msg = cot_sys_prompt(self.cfg.use_cot)
+                t = self.cfg.prompt_tokens
+                prompt = (
+                    f"{t['system_start']}\n{sys_msg}{t['system_end']}\n"
+                    f"{t['user_start']}\nQuestion: {row['question']}\nOptions:\n{formatted_options}\n"
+                )
+                if self.cfg.use_cot:
+                    prompt += "Please analyze step by step and provide the answer."
                 else:
-                    prompt += t["assistant_end"]
-            return prompt
-        except Exception as e:
-            logging.debug(f"Failed to format prompt for row: {e}")
-            return None
+                    prompt += f"Please analyze and provide the answer with only one number in {ANSWER_MARKER[0]}number{ANSWER_MARKER[1]}. "
+
+                prompt += t["user_end"] + "\n" + t["assistant_start"]
+
+                if include_answer:
+                    if self.cfg.use_cot and "distill_response" in row.index and pd.notna(row["distill_response"]):
+                        prompt += f"\n{row['distill_response']}{t['assistant_end']}"
+                    elif "answer_index" in row.index and pd.notna(row["answer_index"]):
+                        # answer_index is expected to be zero-based already
+                        prompt += (
+                            f"\n{ANSWER_MARKER[0]}{int(row['answer_index']) + 1}{ANSWER_MARKER[1]}{t['assistant_end']}"
+                        )
+                    else:
+                        prompt += t["assistant_end"]
+                return prompt
+            except Exception as e:
+                logging.debug(f"Failed to format prompt for row: {e}")
+                return None
 
     # data preparation
     def prepare_datasets(self, train_file: str | list[str], val_file: str, test_file: str):
@@ -153,18 +199,28 @@ class Trainer:
         torch.manual_seed(self.cfg.seed)
 
         def load_and_filter_df(path: str | list[str], require_distill: bool = False):
-            if type(path) is str:
-                logging.info(f"Loading dataset: {path}")
-                df = pd.read_csv(path, sep="\t")
+            def _load_one(p: str) -> pd.DataFrame:
+                logging.info(f"Loading dataset: {p}")
+                if p.endswith(".jsonl") or p.endswith(".json"):
+                    return pd.read_json(p, lines=True)
+                else:
+                    # old tsv format still 
+                    return pd.read_csv(p, sep="\t")
+
+            if isinstance(path, str):
+                df = _load_one(path)
             else:
                 dfs = []
                 for p in path:
-                    logging.info(f"Loading dataset: {path}")
-                    df = pd.read_csv(p, sep="\t")
-                    dfs.append(df)
+                    dfs.append(_load_one(p))
                 df = pd.concat(dfs, ignore_index=True)
-            if require_distill and "distill_response" in df.columns:
-                df = df[df["distill_response"].notna()]
+            # For coT training, filter out rows without distill_response / reasoning
+            if require_distill:
+                if "distill_response" in df.columns:
+                    df = df[df["distill_response"].notna()]
+                elif "reasoning" in df.columns:
+                    df = df[df["reasoning"].notna()]
+
             formatted = df.apply(lambda r: self.format_prompt_qa(r, include_answer=True), axis=1)
             valid_mask = formatted.notnull()
             logging.info(f"Skipped {len(df) - valid_mask.sum()} rows when preparing {path}")
@@ -217,6 +273,9 @@ class Trainer:
         If self.cfg.debug is True -> write JSONL records to save_dir/debug_eval.jsonl
         and append short messages to save_dir/debug_eval.log.
         """
+
+        if "options" not in df.columns:
+            return self._evaluate_qa_jsonl_simple(model, df, tokenizer, epoch, desc)
         model.eval()
         total_correct = 0
         total_errors = 0
@@ -512,6 +571,91 @@ class Trainer:
         self._add_result(epoch=epoch, accuracy=accuracy, desc=desc)
         return accuracy
 
+
+    def _evaluate_qa_jsonl_simple(self, model, df: pd.DataFrame, tokenizer, epoch: int, desc: str) -> float:
+
+        model.eval()
+        total_correct = 0
+        total_errors = 0
+        processed = 0
+
+        pbar = tqdm(total=len(df), desc=desc, leave=False)
+
+        indices = list(range(len(df)))
+        for i in range(0, len(df), self.cfg.eval_batch_size):
+            batch_indices = indices[i : i + self.cfg.eval_batch_size]
+            rows = [df.iloc[idx] for idx in batch_indices]
+
+            prompts = []
+            corrects = []
+
+            for r in rows:
+                if "question" not in r.index or "answer" not in r.index:
+                    total_errors += 1
+                    continue
+
+                try:
+                    prompt = self.format_prompt_qa(r, include_answer=False)
+                except Exception as e:
+                    logging.error(f"Failed to format prompt (jsonl) idx={r.name}: {e}")
+                    total_errors += 1
+                    continue
+
+                if prompt is None:
+                    total_errors += 1
+                    continue
+
+                gold = str(r["answer"]).strip()
+                if gold == "":
+                    total_errors += 1
+                    continue
+
+                prompts.append(prompt)
+                corrects.append(gold)
+
+            if not prompts:
+                continue
+
+            inputs = tokenizer(
+                prompts,
+                return_tensors="pt",
+                padding=True,
+                truncation=True,
+                max_length=self.cfg.max_input_length_eval,
+                return_attention_mask=True,
+            ).to(model.device)
+
+            with torch.no_grad():
+                try:
+                    outputs = model.generate(
+                        inputs.input_ids,
+                        attention_mask=inputs.attention_mask if hasattr(inputs, "attention_mask") else None,
+                        max_new_tokens=self.cfg.max_new_tokens,
+                        num_return_sequences=1,
+                        pad_token_id=tokenizer.eos_token_id,
+                    )
+                except Exception as e:
+                    logging.error(f"Model.generate failed (jsonl) on batch starting idx {batch_indices[0]}: {e}")
+                    total_errors += len(prompts)
+                    continue
+
+            responses = tokenizer.batch_decode(outputs, skip_special_tokens=True)
+
+            for resp, corr in zip(responses, corrects):
+                matches = ANSWER_PATTERN.findall(resp)
+                gen = matches[-1].strip() if matches else None
+                if gen is None:
+                    total_errors += 1
+                else:
+                    total_correct += int(gen == corr)
+                    processed += 1
+                pbar.update(1)
+
+        pbar.close()
+        accuracy = total_correct / (processed if processed else 1.0)
+        self._add_result(epoch=epoch, accuracy=accuracy, desc=desc)
+        return accuracy
+    
     # training loop
     def train(self, save=False):
         from torch.amp import GradScaler, autocast

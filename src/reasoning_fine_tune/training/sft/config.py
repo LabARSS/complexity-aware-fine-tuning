@@ -15,7 +15,7 @@ class TrainConfig:
 
     # model / training
     base_model: str = "/home/dviazhev/qa_finetune/Phi-4-mini-instruct"
-    lr: float = 1e-5
+    lr: float = 2e-4
     batch_size: int = 2
     gradient_accumulation: int = 8
     epochs: int = 3
@@ -36,6 +36,23 @@ class TrainConfig:
     seed: int = 42
     num_workers: int = 4
 
+    use_lora: bool = True
+    lora_r: int = 64
+    lora_alpha: int = 128
+    lora_dropout: float = 0.05
+
+    lora_target_modules: tuple[str, ...] = field(
+        default_factory=lambda: (
+            "q_proj",
+            "k_proj",
+            "v_proj",
+            "o_proj",
+            "gate_proj",
+            "up_proj",
+            "down_proj",
+        )
+    )
+    
     # model-specific prompt style (token wrappers)
     prompt_tokens: Dict[str, str] = field(
         default_factory=lambda: {
