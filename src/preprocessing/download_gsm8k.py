@@ -10,6 +10,7 @@ Usage:
 
 import argparse
 import json
+import re
 from pathlib import Path
 
 from datasets import load_dataset
@@ -52,7 +53,13 @@ def download_and_convert_gsm8k(output_dir: str, split: str = "all"):
                     raise ValueError("Expected '####' in the answer field.")
 
                 example["answer"] = answer[answer_idx + 4 :].strip()
-                example["reasoning"] = answer[:answer_idx].strip()
+
+                reasoning = answer[:answer_idx].strip()
+
+                reasoning_clean = re.sub(r"<<.*?>>", "", reasoning).strip()
+
+                example["reasoning"] = reasoning_clean
+                example["reasoning_w_tools"] = reasoning
 
                 json_line = json.dumps(example, ensure_ascii=False)
                 f.write(json_line + "\n")
