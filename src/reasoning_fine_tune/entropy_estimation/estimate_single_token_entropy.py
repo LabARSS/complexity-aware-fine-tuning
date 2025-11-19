@@ -131,9 +131,10 @@ def estimate_dataset(config: EstimateDatasetConfig):
         except Exception:
             invalid_answers += 1
 
-        # print(
-        #     f"Answer: {answer}\nEntropy: {df.at[index, field_entropy_value]}\nis_correct: {df.at[index, field_ans_correct]}\ndims:{input_length}, {outputs.sequences.shape}\n\n"
-        # )
+        if i < 5:
+            print(
+                f"Answer: {answer}\nExtracted answer: {extracted_answer}\nAnswer position: {extracted_answer_position}/{len(outputs.scores)} \nEntropy: {df.at[index, field_entropy_value]}\nis_correct: {df.at[index, field_ans_correct]}\n\n\n"
+            )
 
         if cast(int, index) % config.dump_every == 0:
             if file_type == ".jsonl":
