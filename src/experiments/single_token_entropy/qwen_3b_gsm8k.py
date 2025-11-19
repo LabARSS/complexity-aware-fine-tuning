@@ -20,7 +20,7 @@ class QwenConfig(EstimateDatasetConfig):
     model_name: str = "Qwen/Qwen2.5-3B-Instruct"
     device: str = "cuda"
     check_answer_correct: Callable[[pd.Series, str], bool] = check_answer_correct_gsm8k
-    model_config_dict = {}
+    model_config_dict: dict = {}
 
 
 estimate_dataset(config=QwenConfig())
