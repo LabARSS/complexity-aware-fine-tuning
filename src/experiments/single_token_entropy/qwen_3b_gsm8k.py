@@ -2,6 +2,7 @@ from pathlib import Path
 from typing import Callable
 
 import pandas as pd
+import torch
 
 from reasoning_fine_tune.entropy_estimation.estimate_single_token_entropy import EstimateDatasetConfig, estimate_dataset
 from reasoning_fine_tune.prompts.gsm8k_cot_answer import cot_answer_prompt_from_row, cot_sys_prompt_from_row
@@ -20,7 +21,7 @@ class QwenConfig(EstimateDatasetConfig):
     model_name: str = "Qwen/Qwen2.5-3B-Instruct"
     device: str = "cuda"
     check_answer_correct: Callable[[pd.Series, str], bool] = check_answer_correct_gsm8k
-    model_config_dict: dict = {}
+    model_config_dict: dict = {"torch_dtype": torch.bfloat16}
 
 
 estimate_dataset(config=QwenConfig())
