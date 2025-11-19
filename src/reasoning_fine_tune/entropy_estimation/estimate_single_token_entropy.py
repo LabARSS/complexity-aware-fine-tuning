@@ -95,7 +95,13 @@ def estimate_dataset(config: EstimateDatasetConfig):
 
         input_length = inputs.input_ids.shape[1]
         answer_raw = outputs.sequences[0, input_length:]
-        answer = tokenizer.decode(answer_raw, skip_special_tokens=True)
+
+        answer_token_map = []
+        answer = ""
+        for i, token in enumerate(answer_raw):
+            token_decoded = tokenizer.decode(token.unsqueeze(0), skip_special_tokens=True)
+            answer_token_map.extend([i] * len(token_decoded))
+            answer += token_decoded
 
         df.at[index, field_ans] = answer
 
@@ -111,6 +117,8 @@ def estimate_dataset(config: EstimateDatasetConfig):
         if extracted_answer_position == -1:
             invalid_answers += 1
             continue
+
+        extracted_answer_position = answer_token_map[extracted_answer_position]
 
         # generated token position, batch_dim
         final_token_logits = outputs.scores[extracted_answer_position][0]
