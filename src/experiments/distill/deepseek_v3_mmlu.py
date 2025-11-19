@@ -9,7 +9,7 @@ from reasoning_fine_tune.utils.correctness import check_answer_correct_mmlu
 class V3Config(DistillConfig):
     in_filename = str(Path(__file__).parent.joinpath("../../../data/source/mmlu_pro_stem_shuffled.tsv").resolve())
     out_filename = str(Path(__file__).parent.joinpath("../../../data/out/distillation/mmlu_deepseek_v3.tsv").resolve())
-    model = "deepseek/deepseek-v3-mmlu"
+    model = "deepseek/deepseek-chat-v3.1"
     check_answer_correct = check_answer_correct_mmlu
     get_sys_prompt = cot_sys_prompt_from_row
     get_user_prompt = cot_answer_prompt_from_row
