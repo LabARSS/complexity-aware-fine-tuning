@@ -1,47 +1,51 @@
 import gc
 import os
+from typing import Callable, cast
 
 import pandas as pd
 import torch
+from pydraconf.base_config import PydraConfig
 from tqdm import tqdm
+from transformers import AutoModelForCausalLM, AutoTokenizer
 
-import reasoning_fine_tune.prompts.mmlu_single_token_answer as mmlu_prompts
 from reasoning_fine_tune.entropy_estimation.logit_entropy import compute_entropy_from_logits
-from reasoning_fine_tune.utils.device import DEVICE
-from reasoning_fine_tune.utils.validation import validate_mmlu_answer
+from reasoning_fine_tune.prompts.gsm8k_cot_answer import answer_marker
 
 
-def estimate_dataset(
-    in_filename,
-    out_filename,
-    model,
-    tokenizer,
-    get_subject_from_row,
-    get_question_from_row,
-    get_options_from_row,
-    check_answer_correct,
-    dump_every=100,
-    max_new_tokens=1,
-    get_sys_prompt=mmlu_prompts.single_token_sys_prompt,
-    get_user_prompt=mmlu_prompts.single_token_answer_prompt,
-):
+class EstimateDatasetConfig(PydraConfig):
+    in_filename: str
+    out_filename: str
+    dump_every: int = 100
+    max_new_tokens: int = 1
+    get_sys_prompt: Callable[[pd.Series], str]
+    get_user_prompt: Callable[[pd.Series], str]
+    model_name: str
+    device: str
+    model_config_dict: dict
+    check_answer_correct: Callable[[pd.Series, str], bool]
+
+
+def estimate_dataset(config: EstimateDatasetConfig):
     invalid_answers = 0
 
-    if os.path.exists(out_filename):
-        in_filename = out_filename
+    in_filename = config.in_filename
+    file_type = os.path.splitext(config.in_filename)[1]
 
-    df = pd.read_csv(
-        in_filename,
-        sep="\t",
-        header=0,
-    )
+    if os.path.exists(config.out_filename):
+        in_filename = config.out_filename
 
-    model_name = model.config_class().model_type
-    print(model_name)
+    if file_type == ".jsonl":
+        df = pd.read_json(in_filename, lines=True)
+    else:
+        df = pd.read_csv(
+            in_filename,
+            sep="\t",
+            header=0,
+        )
 
-    field_ans = f"entropy_ans_{model_name}"
-    field_ans_correct = f"entropy_ans_correct_{model_name}"
-    field_entropy_value = f"entropy_value_{model_name}"
+    field_ans = "entropy_ans"
+    field_ans_correct = "entropy_ans_correct"
+    field_entropy_value = "entropy_value"
 
     if field_ans_correct not in df.columns:
         df[field_ans_correct] = False
@@ -50,18 +54,22 @@ def estimate_dataset(
     if field_ans not in df.columns:
         df[field_ans] = ""
 
+    tokenizer = AutoTokenizer.from_pretrained(config.model_name)
+    model = AutoModelForCausalLM.from_pretrained(config.model_name, **config.model_config_dict).to(config.device)
+
     for index, row in tqdm(df.iterrows(), total=df.shape[0]):
-        if validate_mmlu_answer(df.at[index, field_ans]):
+        if row[field_ans] != "":
             continue
 
         gc.collect()
-        if DEVICE == torch.device("cuda"):
+        if config.device == "cuda":
             torch.cuda.empty_cache()
 
         # print(f"loop {index} -> start: {model.get_memory_footprint(return_buffers=True) / 10**9} GB")
 
-        sys_prompt = get_sys_prompt(get_subject_from_row(row))
-        user_prompt = get_user_prompt(get_question_from_row(row), get_options_from_row(row))
+        sys_prompt = config.get_sys_prompt(row)
+        user_prompt = config.get_user_prompt(row)
+
         # print(user_prompt)
         messages = [
             {"role": "system", "content": sys_prompt},
@@ -69,11 +77,11 @@ def estimate_dataset(
         ]
         formatted_prompt = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
 
-        inputs = tokenizer(formatted_prompt, return_tensors="pt").to(DEVICE)
+        inputs = tokenizer(formatted_prompt, return_tensors="pt").to(config.device)
 
         outputs = model.generate(
             **inputs,
-            max_new_tokens=max_new_tokens,
+            max_new_tokens=config.max_new_tokens,
             return_dict_in_generate=True,
             output_scores=True,
             temperature=None,
@@ -90,25 +98,48 @@ def estimate_dataset(
         answer = tokenizer.decode(answer_raw, skip_special_tokens=True)
 
         df.at[index, field_ans] = answer
+
+        answer_marker_start = answer.find(answer_marker[0])
+        answer_marker_end = answer.find(answer_marker[1])
+
+        extracted_answer_position = -1
+        extracted_answer = ""
+        if answer_marker_end != -1 and answer_marker_start != -1:
+            extracted_answer = answer[answer_marker_start + len(answer_marker[0]) : answer_marker_end]
+            extracted_answer_position = answer_marker_start + len(answer_marker[0])
+
+        if extracted_answer_position == -1:
+            invalid_answers += 1
+            continue
+
         # generated token position, batch_dim
-        final_token_logits = outputs.scores[-1][0]
+        final_token_logits = outputs.scores[extracted_answer_position][0]
         entropy = compute_entropy_from_logits(final_token_logits)
         df.at[index, field_entropy_value] = entropy
 
-        # 0 is a special exception for "do not know"
-        if validate_mmlu_answer(answer):
-            # print(f"loop {index} -> after entropy: {model.get_memory_footprint(return_buffers=True) / 10**9} GB")
-            df.at[index, field_ans_correct] = check_answer_correct(row, answer)
-        else:
+        try:
+            df.at[index, field_ans] = extracted_answer
+            df.at[index, field_ans_correct] = config.check_answer_correct(df.iloc[index], extracted_answer)
+        except Exception:
             invalid_answers += 1
 
         # print(
         #     f"Answer: {answer}\nEntropy: {df.at[index, field_entropy_value]}\nis_correct: {df.at[index, field_ans_correct]}\ndims:{input_length}, {outputs.sequences.shape}\n\n"
         # )
 
-        if index % dump_every == 0:
-            df.to_csv(out_filename, sep="\t", index=False)
+        if cast(int, index) % config.dump_every == 0:
+            if file_type == ".jsonl":
+                df.to_json(config.out_filename, lines=True, orient="records")
+            else:
+                df.to_csv(config.out_filename, sep="\t", index=False)
 
-    df.to_csv(out_filename, sep="\t", index=False)
-    print(f"Processed dataset {out_filename}. Total entries: {df.shape[0]}. Invalid answers: {invalid_answers}")
+            print(
+                f"Processing dataset {config.out_filename}... Processed: {index}/{df.shape[0]}. Invalid answers: {invalid_answers}"
+            )
+
+    if file_type == ".jsonl":
+        df.to_json(config.out_filename, lines=True, orient="records")
+    else:
+        df.to_csv(config.out_filename, sep="\t", index=False)
+    print(f"Processed dataset {config.out_filename}. Total entries: {df.shape[0]}. Invalid answers: {invalid_answers}")
     return df
