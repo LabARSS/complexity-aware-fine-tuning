@@ -1,19 +1,23 @@
-import ast
 from multiprocessing import freeze_support
 from pathlib import Path
 
-from reasoning_fine_tune.distillation.distill import distill_on_dataset
+from reasoning_fine_tune.distillation.distill import DistillConfig, distill_on_dataset
+from reasoning_fine_tune.prompts.mmlu_cot_answer import cot_answer_prompt_from_row, cot_sys_prompt_from_row
 from reasoning_fine_tune.utils.correctness import check_answer_correct_mmlu
+
+
+class MaverickConfig(DistillConfig):
+    in_filename = str(Path(__file__).parent.joinpath("../../../data/source/mmlu_pro_stem_shuffled.tsv").resolve())
+    out_filename = str(
+        Path(__file__).parent.joinpath("../../../data/out/distillation/mmlu_llama4_maverick.tsv").resolve()
+    )
+    model = "meta-llama/llama-4-maverick"
+    check_answer_correct = check_answer_correct_mmlu
+    get_sys_prompt = cot_sys_prompt_from_row
+    get_user_prompt = cot_answer_prompt_from_row
+
 
 if __name__ == "__main__":
     freeze_support()
 
-    distill_on_dataset(
-        in_filename=Path(__file__).parent.joinpath("../../../data/source/mmlu_pro_stem_shuffled.tsv").resolve(),
-        out_filename=Path(__file__).parent.joinpath("../../../data/out/distillation/mmlu_merged.tsv").resolve(),
-        get_subject_from_row=lambda row: row["base_cluster"],
-        get_question_from_row=lambda row: row["question"],
-        get_options_from_row=lambda row: ast.literal_eval(row["options"]),
-        check_answer_correct=check_answer_correct_mmlu,
-        model="meta-llama/llama-4-maverick",
-    )
+    distill_on_dataset(config=MaverickConfig())

@@ -15,6 +15,7 @@ dependencies = [
     "pandas>=2.2.3",
     "protobuf>=6.30.2",
     "pyarrow>=19.0.1",
+    "pydraconf>=0.1.0",
     "scikit-learn>=1.6.1",
     "seaborn>=0.13.2",
     "sentencepiece>=0.2.0",
