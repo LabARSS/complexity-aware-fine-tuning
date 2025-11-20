@@ -84,10 +84,9 @@ class Trainer:
             logging.exception("Exception in from_pretrained")
             raise
             # Try to enable gradient checkpointing if possible
-            
+
         self.model.gradient_checkpointing_enable()
 
-        
         # LoRA wrapping
         if getattr(self.cfg, "use_lora", False):
             try:
@@ -140,8 +139,7 @@ class Trainer:
 
                 # system + user часть
                 prompt = (
-                    f"{t['system_start']}\n {sys_msg}{t['system_end']} \n"
-                    f"{t['user_start']}\n Question: {question} \n"
+                    f"{t['system_start']}\n {sys_msg}{t['system_end']} \n{t['user_start']}\n Question: {question} \n"
                 )
 
                 if self.cfg.use_cot:
@@ -210,8 +208,7 @@ class Trainer:
                     elif "answer_index" in row.index and pd.notna(row["answer_index"]):
                         # answer_index is expected to be zero-based already
                         prompt += (
-                            f"\n{ANSWER_MARKER[0]}{int(row['answer_index']) + 1}"
-                            f"{ANSWER_MARKER[1]}{t['assistant_end']}"
+                            f"\n{ANSWER_MARKER[0]}{int(row['answer_index']) + 1}{ANSWER_MARKER[1]}{t['assistant_end']}"
                         )
                     else:
                         prompt += t["assistant_end"]
@@ -261,8 +258,7 @@ class Trainer:
             formatted = formatted[valid_mask].reset_index(drop=True)
 
             logging.info(
-                f"Skipped {total_rows - valid_mask.sum()} rows when preparing {path} "
-                f"(after CoT/filtering: {len(df)})"
+                f"Skipped {total_rows - valid_mask.sum()} rows when preparing {path} (after CoT/filtering: {len(df)})"
             )
 
             # Sample if needed
@@ -270,12 +266,10 @@ class Trainer:
                 idx = np.random.choice(len(df), size=sample_size, replace=False)
                 df = df.iloc[idx].reset_index(drop=True)
                 formatted = formatted.iloc[idx].reset_index(drop=True)
-                logging.info(
-                    f"Using sample of {sample_size} rows from {path} (total after filter: {len(valid_mask)})"
-                )
+                logging.info(f"Using sample of {sample_size} rows from {path} (total after filter: {len(valid_mask)})")
 
             return df, formatted
-        
+
         train_sample_size = getattr(self.cfg, "train_sample_size", None)
         val_sample_size = getattr(self.cfg, "val_sample_size", None)
         test_sample_size = getattr(self.cfg, "test_sample_size", None)
@@ -339,7 +333,6 @@ class Trainer:
         desc: str = "Validating",
         data_format: str = "jsonl",
     ) -> float:
-
         model.eval()
         total_correct = 0
         total_errors = 0
@@ -493,16 +486,13 @@ class Trainer:
                     if not (0 < int(ai_val) <= len(opts)):
                         total_errors += 1
                         logging.error(
-                            "Skipping eval row idx=%s: reason=Invalid answer index, "
-                            "answer_index=%s, options_len=%s",
+                            "Skipping eval row idx=%s: reason=Invalid answer index, answer_index=%s, options_len=%s",
                             idx,
                             ai_val,
                             len(opts),
                         )
                         if self.cfg.debug:
-                            dbg_write_log(
-                                f"[SKIP idx={idx}] invalid answer index {ai_val} (options_len={len(opts)})"
-                            )
+                            dbg_write_log(f"[SKIP idx={idx}] invalid answer index {ai_val} (options_len={len(opts)})")
                             dbg_write_jsonl(
                                 {
                                     "idx": idx,
@@ -537,9 +527,7 @@ class Trainer:
                     if "question" not in r.index or "answer" not in r.index:
                         total_errors += 1
                         if self.cfg.debug:
-                            dbg_write_log(
-                                f"[SKIP idx={idx}] missing 'question' or 'answer' column in jsonl row"
-                            )
+                            dbg_write_log(f"[SKIP idx={idx}] missing 'question' or 'answer' column in jsonl row")
                             dbg_write_jsonl(
                                 {
                                     "idx": idx,
@@ -608,14 +596,9 @@ class Trainer:
                 for j, meta in enumerate(row_meta[: min(3, len(row_meta))]):
                     try:
                         in_ids = inputs.input_ids[j].tolist()
-                        attn_ids = (
-                            inputs.attention_mask[j].tolist()
-                            if hasattr(inputs, "attention_mask")
-                            else None
-                        )
+                        attn_ids = inputs.attention_mask[j].tolist() if hasattr(inputs, "attention_mask") else None
                         dbg_write_log(
-                            f"[BATCH INPUT idx={meta['index']}] "
-                            f"prompt_snippet={prompts[j][:PROMPT_SNIPPET_CHARS]!r}"
+                            f"[BATCH INPUT idx={meta['index']}] prompt_snippet={prompts[j][:PROMPT_SNIPPET_CHARS]!r}"
                         )
                         dbg_write_log(
                             f"[BATCH INPUT idx={meta['index']}] "
@@ -639,26 +622,20 @@ class Trainer:
                                 "prompt": prompts[j],
                                 "prompt_snippet": prompts[j][:PROMPT_SNIPPET_CHARS],
                                 "input_ids": in_ids[:INPUT_ID_SHOW],
-                                "attention_mask": attn_ids[:INPUT_ID_SHOW]
-                                if attn_ids is not None
-                                else None,
+                                "attention_mask": attn_ids[:INPUT_ID_SHOW] if attn_ids is not None else None,
                                 "expected": meta["expected"],
                                 "options": meta["options"],
                                 "data_format": data_format,
                             }
                         )
                     except Exception as e:
-                        dbg_write_log(
-                            f"[DEBUG WARNING] failed to log batch input idx={meta['index']}: {e}"
-                        )
+                        dbg_write_log(f"[DEBUG WARNING] failed to log batch input idx={meta['index']}: {e}")
 
             with torch.no_grad():
                 try:
                     outputs = model.generate(
                         inputs.input_ids,
-                        attention_mask=inputs.attention_mask
-                        if hasattr(inputs, "attention_mask")
-                        else None,
+                        attention_mask=inputs.attention_mask if hasattr(inputs, "attention_mask") else None,
                         max_new_tokens=self.cfg.max_new_tokens,
                         num_return_sequences=1,
                         pad_token_id=tokenizer.eos_token_id,
@@ -669,13 +646,10 @@ class Trainer:
                         total_errors += len(prompts)
                     else:  # mc
                         total_errors += 1
-                    logging.error(
-                        f"Model.generate failed on batch starting idx {batch_indices[0]}: {e}"
-                    )
+                    logging.error(f"Model.generate failed on batch starting idx {batch_indices[0]}: {e}")
                     if self.cfg.debug:
                         dbg_write_log(
-                            f"[GEN ERROR] batch_start_idx={batch_indices[0]} "
-                            f"error={repr(e)} data_format={data_format}"
+                            f"[GEN ERROR] batch_start_idx={batch_indices[0]} error={repr(e)} data_format={data_format}"
                         )
                     continue
 
@@ -691,8 +665,7 @@ class Trainer:
                 )
                 if self.cfg.debug:
                     dbg_write_log(
-                        "[LENGTH MISMATCH] "
-                        f"responses={len(responses)} corrects={len(corrects)} meta={len(row_meta)}"
+                        f"[LENGTH MISMATCH] responses={len(responses)} corrects={len(corrects)} meta={len(row_meta)}"
                     )
 
             for k, (resp, corr, meta) in enumerate(zip(responses[:n], corrects[:n], row_meta[:n])):
@@ -731,10 +704,7 @@ class Trainer:
                     if data_format == "jsonl" and gen is None:
                         total_errors += 1
                         if self.cfg.debug:
-                            dbg_write_log(
-                                f"[PARSE MISS idx={meta['index']}] "
-                                f"no answer marker found in generated text"
-                            )
+                            dbg_write_log(f"[PARSE MISS idx={meta['index']}] no answer marker found in generated text")
                             dbg_write_jsonl(
                                 {
                                     "idx": meta["index"],
@@ -746,16 +716,14 @@ class Trainer:
                                 }
                             )
                     else:
-                        is_correct = (gen == corr)
+                        is_correct = gen == corr
                         total_correct += int(is_correct)
                         processed += 1
 
                         if self.cfg.debug:
                             try:
                                 gen_ids = (
-                                    outputs[k].tolist()[:GENERATED_ID_SHOW]
-                                    if hasattr(outputs, "tolist")
-                                    else None
+                                    outputs[k].tolist()[:GENERATED_ID_SHOW] if hasattr(outputs, "tolist") else None
                                 )
                             except Exception:
                                 gen_ids = None
@@ -792,8 +760,7 @@ class Trainer:
                     logging.error(f"Eval parse error idx={meta.get('index')}: {e}")
                     if self.cfg.debug:
                         dbg_write_log(
-                            f"[PARSE ERROR] idx={meta.get('index')} "
-                            f"error={repr(e)} resp_snippet={resp[:1000]!r}"
+                            f"[PARSE ERROR] idx={meta.get('index')} error={repr(e)} resp_snippet={resp[:1000]!r}"
                         )
                 pbar.update(1)
 
@@ -811,7 +778,7 @@ class Trainer:
         accuracy = total_correct / (processed if processed else 1.0)
         self._add_result(epoch=epoch, accuracy=accuracy, desc=desc)
         return accuracy
-    
+
     # training loop
     def train(self, save=False):
         from torch.amp import GradScaler, autocast
@@ -838,12 +805,9 @@ class Trainer:
         if self.cfg.run_eval_on_start:
             logging.info("Evaluating model before training")
 
-
             if test_df is not None and len(test_df) > 0:
                 test_balanced_df = test_df
-                logging.info(
-                    f"Using in-memory test_df for initial eval: {len(test_balanced_df)} rows"
-                )
+                logging.info(f"Using in-memory test_df for initial eval: {len(test_balanced_df)} rows")
             else:
                 # Фолбэк на старое поведение, если вдруг test_df пустой
                 if self.cfg.test_balanced_path.endswith((".jsonl", ".json")):
@@ -851,8 +815,7 @@ class Trainer:
                 else:
                     test_balanced_df = pd.read_csv(self.cfg.test_balanced_path, sep="\t")
                 logging.info(
-                    f"Loaded test_balanced_df from path {self.cfg.test_balanced_path}: "
-                    f"{len(test_balanced_df)} rows"
+                    f"Loaded test_balanced_df from path {self.cfg.test_balanced_path}: {len(test_balanced_df)} rows"
                 )
 
             test_acc = self.evaluate_qa(
@@ -864,7 +827,6 @@ class Trainer:
                 data_format="jsonl",  # для gsm8k-jsonl
             )
             logging.info(f"TEST BALANCED QA Accuracy: {test_acc * 100:.2f}%")
-
 
         for epoch in range(self.cfg.epochs):
             self.model.train()
@@ -949,7 +911,6 @@ class Trainer:
                     data_format="jsonl",
                 )
                 logging.info(f"TEST BALANCED QA Accuracy: {test_acc * 100:.2f}%")
-
 
             # save checkpoint (disabled by default, enable if you want)
             # epoch_dir = os.path.join(self.cfg.save_dir, f"epoch_{epoch+1}")
