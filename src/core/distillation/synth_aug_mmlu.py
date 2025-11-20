@@ -237,6 +237,36 @@ def _load_incorrect_from_branch_a(a_jsonl_path: str, expected_model: str | None)
     return bad
 
 
+def _load_and_clean_existing(out_jsonl: str) -> set[int]:
+    if not os.path.exists(out_jsonl):
+        return set()
+    
+    valid_ids = set()
+    valid_lines = []
+    
+    with open(out_jsonl, "r", encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if not line: continue
+            try:
+                rec = json.loads(line)
+                # Check if output has error
+                if "error" not in rec.get("output", {}):
+                    rid = rec.get("input", {}).get("row_id")
+                    if rid is not None:
+                        valid_ids.add(int(rid))
+                    valid_lines.append(line)
+            except Exception:
+                pass
+    
+    # Rewrite file with only valid lines
+    with open(out_jsonl, "w", encoding="utf-8") as f:
+        for line in valid_lines:
+            f.write(line + "\n")
+            
+    return valid_ids
+
+
 # ------------ dataset -------------
 def _run_job(job):
     (
@@ -302,6 +332,9 @@ def synth_on_dataset(
 
     os.makedirs(os.path.dirname(out_jsonl) or ".", exist_ok=True)
 
+    existing_ids = _load_and_clean_existing(out_jsonl)
+    logging.warning(f"Found {len(existing_ids)} valid records in {out_jsonl}. Errors removed.")
+
     # pre-load A-incorrects for branch C
     a_incorrect_map: dict[int, dict] = {}
     ids_for_c: set[int] = set()
@@ -319,6 +352,9 @@ def synth_on_dataset(
 
             args_list = []
             for index, row in chunk.iterrows():
+                if index in existing_ids:
+                    continue
+
                 if limit is not None and written >= limit:
                     stop = True
                     break
