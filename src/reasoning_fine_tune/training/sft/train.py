@@ -83,6 +83,10 @@ class Trainer:
             print("Exception during from_pretrained:", repr(e), flush=True)
             logging.exception("Exception in from_pretrained")
             raise
+            # Try to enable gradient checkpointing if possible
+            
+        self.model.gradient_checkpointing_enable()
+
         
         # LoRA wrapping
         if getattr(self.cfg, "use_lora", False):
@@ -104,13 +108,6 @@ class Trainer:
             logging.info("Model wrapped with LoRA.")
             self.model.print_trainable_parameters()
 
-        try:
-            # Try to enable gradient checkpointing if possible
-            try:
-                self.model.gradient_checkpointing_enable()
-            except Exception:
-                logging.warning("Couldn't enable gradient checkpointing for this model")
-
             # If device_map was None (no automatic placement), move model to device
             if device_map is None:
                 try:
@@ -126,39 +123,65 @@ class Trainer:
             self.tokenizer.padding_side = "left"
             print("Tokenizer loaded.", flush=True)
             logging.info("Tokenizer loaded")
-        except Exception as e:
-            print("Exception loading tokenizer or post-processing:", repr(e), flush=True)
-            logging.exception("Exception loading tokenizer")
-            raise
 
     # prompt formatting
     def format_prompt_qa(self, row: pd.Series, include_answer: bool = True, new_format: bool = True) -> str:
         if new_format:
             try:
+                if "question" not in row.index:
+                    return None
+
                 question = str(row["question"]).strip()
+                if not question:
+                    return None
+
+                sys_msg = cot_sys_prompt(self.cfg.use_cot)
+                t = self.cfg.prompt_tokens
+
+                # system + user часть
+                prompt = (
+                    f"{t['system_start']}\n {sys_msg}{t['system_end']} \n"
+                    f"{t['user_start']}\n Question: {question} \n"
+                )
+
+                if self.cfg.use_cot:
+                    prompt += "Please analyze step by step and provide the answer."
+                else:
+                    prompt += (
+                        "Analyze question and answer with only one number in "
+                        f"{ANSWER_MARKER[0]}number{ANSWER_MARKER[1]} format."
+                    )
+
+                prompt += t["user_end"] + "\n" + t["assistant_start"]
+
+                if not include_answer:
+                    return prompt
+
+                answer = None
+                if "answer" in row.index and pd.notna(row["answer"]):
+                    answer = str(row["answer"]).strip()
+                    if answer == "":
+                        answer = None
+
+                if self.cfg.use_cot and "reasoning" in row.index and pd.notna(row["reasoning"]):
+                    reasoning = str(row["reasoning"]).strip()
+                    if answer:
+                        prompt += f"\n {reasoning} \n {ANSWER_MARKER[0]}{answer}{ANSWER_MARKER[1]}{t['assistant_end']}"
+                    else:
+                        prompt += f"\n {reasoning}{t['assistant_end']}"
+                elif answer:
+                    prompt += f"\n {ANSWER_MARKER[0]}{answer}{ANSWER_MARKER[1]}{t['assistant_end']}"
+                else:
+                    prompt += t["assistant_end"]
+
+                return prompt
+
             except Exception as e:
-                logging.debug(f"Row without 'question' field: {e}")
+                logging.debug(f"Failed to format prompt for row: {e}")
                 return None
-
-            answer = None
-            if "answer" in row.index and pd.notna(row["answer"]):
-                answer = str(row["answer"]).strip()
-            reasoning = None
-            if self.cfg.use_cot and "reasoning" in row.index and pd.notna(row["reasoning"]):
-                reasoning = str(row["reasoning"]).strip()
-
-            if not include_answer:
-                return question
-
-            if answer is None:
-                return None
-
-            if self.cfg.use_cot and reasoning:
-                return f"{question}\n{reasoning}\n{ANSWER_MARKER[0]}{answer}{ANSWER_MARKER[1]}"
-            else:
-                return f"{question}\n{ANSWER_MARKER[0]}{answer}{ANSWER_MARKER[1]}"
 
         else:
+            # old code for tsv
             try:
                 options = literal_eval(row["options"])
                 # display: "1. option0", "2. option1", ...
@@ -168,13 +191,16 @@ class Trainer:
                 sys_msg = cot_sys_prompt(self.cfg.use_cot)
                 t = self.cfg.prompt_tokens
                 prompt = (
-                    f"{t['system_start']}\n{sys_msg}{t['system_end']}\n"
-                    f"{t['user_start']}\nQuestion: {row['question']}\nOptions:\n{formatted_options}\n"
+                    f"{t['system_start']}\n {sys_msg}{t['system_end']} \n"
+                    f"{t['user_start']}\n Question: {row['question']} \nOptions: \n{formatted_options} \n"
                 )
                 if self.cfg.use_cot:
                     prompt += "Please analyze step by step and provide the answer."
                 else:
-                    prompt += f"Please analyze and provide the answer with only one number in {ANSWER_MARKER[0]}number{ANSWER_MARKER[1]}. "
+                    prompt += (
+                        "Please analyze and provide the answer with only one number in "
+                        f"{ANSWER_MARKER[0]}number{ANSWER_MARKER[1]}."
+                    )
 
                 prompt += t["user_end"] + "\n" + t["assistant_start"]
 
@@ -184,7 +210,8 @@ class Trainer:
                     elif "answer_index" in row.index and pd.notna(row["answer_index"]):
                         # answer_index is expected to be zero-based already
                         prompt += (
-                            f"\n{ANSWER_MARKER[0]}{int(row['answer_index']) + 1}{ANSWER_MARKER[1]}{t['assistant_end']}"
+                            f"\n{ANSWER_MARKER[0]}{int(row['answer_index']) + 1}"
+                            f"{ANSWER_MARKER[1]}{t['assistant_end']}"
                         )
                     else:
                         prompt += t["assistant_end"]
@@ -198,13 +225,17 @@ class Trainer:
         np.random.seed(self.cfg.seed)
         torch.manual_seed(self.cfg.seed)
 
-        def load_and_filter_df(path: str | list[str], require_distill: bool = False):
+        def load_and_filter_df(
+            path: str | list[str],
+            require_distill: bool = False,
+            sample_size: int | None = None,
+        ):
             def _load_one(p: str) -> pd.DataFrame:
                 logging.info(f"Loading dataset: {p}")
                 if p.endswith(".jsonl") or p.endswith(".json"):
                     return pd.read_json(p, lines=True)
                 else:
-                    # old tsv format still 
+                    # old tsv format still
                     return pd.read_csv(p, sep="\t")
 
             if isinstance(path, str):
@@ -214,7 +245,9 @@ class Trainer:
                 for p in path:
                     dfs.append(_load_one(p))
                 df = pd.concat(dfs, ignore_index=True)
-            # For coT training, filter out rows without distill_response / reasoning
+
+            total_rows = len(df)
+
             if require_distill:
                 if "distill_response" in df.columns:
                     df = df[df["distill_response"].notna()]
@@ -223,12 +256,45 @@ class Trainer:
 
             formatted = df.apply(lambda r: self.format_prompt_qa(r, include_answer=True), axis=1)
             valid_mask = formatted.notnull()
-            logging.info(f"Skipped {len(df) - valid_mask.sum()} rows when preparing {path}")
-            return df[valid_mask], formatted[valid_mask]
 
-        train_df, train_formatted = load_and_filter_df(train_file, require_distill=self.cfg.use_cot)
-        val_df, val_formatted = load_and_filter_df(val_file, require_distill=self.cfg.use_cot)
-        test_df, test_formatted = load_and_filter_df(test_file, require_distill=self.cfg.use_cot)
+            df = df[valid_mask].reset_index(drop=True)
+            formatted = formatted[valid_mask].reset_index(drop=True)
+
+            logging.info(
+                f"Skipped {total_rows - valid_mask.sum()} rows when preparing {path} "
+                f"(after CoT/filtering: {len(df)})"
+            )
+
+            # Sample if needed
+            if sample_size is not None and len(df) > sample_size:
+                idx = np.random.choice(len(df), size=sample_size, replace=False)
+                df = df.iloc[idx].reset_index(drop=True)
+                formatted = formatted.iloc[idx].reset_index(drop=True)
+                logging.info(
+                    f"Using sample of {sample_size} rows from {path} (total after filter: {len(valid_mask)})"
+                )
+
+            return df, formatted
+        
+        train_sample_size = getattr(self.cfg, "train_sample_size", None)
+        val_sample_size = getattr(self.cfg, "val_sample_size", None)
+        test_sample_size = getattr(self.cfg, "test_sample_size", None)
+
+        train_df, train_formatted = load_and_filter_df(
+            train_file,
+            require_distill=self.cfg.use_cot,
+            sample_size=train_sample_size,
+        )
+        val_df, val_formatted = load_and_filter_df(
+            val_file,
+            require_distill=self.cfg.use_cot,
+            sample_size=val_sample_size,
+        )
+        test_df, test_formatted = load_and_filter_df(
+            test_file,
+            require_distill=self.cfg.use_cot,
+            sample_size=test_sample_size,
+        )
 
         # top-level, module-level function (pickleable)
         def tokenize_batch(examples, tokenizer_name: str, max_length: int):
@@ -237,7 +303,6 @@ class Trainer:
             tok = AutoTokenizer.from_pretrained(tokenizer_name, use_fast=True)
             if getattr(tok, "pad_token", None) is None:
                 tok.pad_token = tok.eos_token
-            # examples['text'] — список при batched=True
             return tok(
                 examples["text"],
                 truncation=True,
@@ -249,7 +314,6 @@ class Trainer:
 
         def create_dataset(formatted_series, _orig_df):
             dataset = Dataset.from_pandas(pd.DataFrame({"text": formatted_series}), preserve_index=False)
-            # batched=True -> examples come as lists, tokenizers accept lists (faster)
             return dataset.map(
                 tokenize_batch,
                 batched=True,
@@ -266,16 +330,16 @@ class Trainer:
         return train_ds, val_ds, test_ds, train_df, val_df, test_df
 
     # evaluatio
-    def evaluate_qa(self, model, df: pd.DataFrame, tokenizer, epoch: int, desc: str = "Validating"):
-        """
-        Verbose debug-capable evaluation.
+    def evaluate_qa(
+        self,
+        model,
+        df: pd.DataFrame,
+        tokenizer,
+        epoch: int,
+        desc: str = "Validating",
+        data_format: str = "jsonl",
+    ) -> float:
 
-        If self.cfg.debug is True -> write JSONL records to save_dir/debug_eval.jsonl
-        and append short messages to save_dir/debug_eval.log.
-        """
-
-        if "options" not in df.columns:
-            return self._evaluate_qa_jsonl_simple(model, df, tokenizer, epoch, desc)
         model.eval()
         total_correct = 0
         total_errors = 0
@@ -285,6 +349,10 @@ class Trainer:
         debug_jsonl_path = os.path.join(self.cfg.save_dir, "debug_eval.jsonl")
         debug_log_path = os.path.join(self.cfg.save_dir, "debug_eval.log")
 
+        # how many preview examples to log
+        preview_examples_target = 2
+        preview_examples_logged = 0
+
         # limits for logging / truncation
         PROMPT_SNIPPET_CHARS = 1200
         DECODED_INPUT_CHARS = 500
@@ -293,7 +361,6 @@ class Trainer:
         GENERATED_TEXT_SNIPPET = 2000
 
         def dbg_write_log(s: str):
-            # append short message
             if self.cfg.debug:
                 with open(debug_log_path, "a", encoding="utf-8") as f:
                     f.write(s + "\n")
@@ -309,144 +376,225 @@ class Trainer:
             batch_indices = indices[i : i + self.cfg.eval_batch_size]
             rows = [df.iloc[idx] for idx in batch_indices]
 
-            prompts = []
-            corrects = []
-            row_meta = []
+            prompts: list[str] = []
+            corrects: list[str] = []
+            row_meta: list[dict] = []
+
             for r in rows:
                 idx = r.name
-                try:
-                    opts = literal_eval(r["options"])
-                except Exception as e:
-                    total_errors += 1
-                    logging.error(f"Skipping eval row idx={idx}: reason=options_parse_failed: {e}")
-                    if self.cfg.debug:
-                        dbg_write_log(f"[SKIP idx={idx}] options parse failed: {e}")
-                        dbg_write_jsonl({"idx": idx, "reason": "options_parse_failed", "raw_options": r.get("options")})
-                    continue
 
-                # try to get answer candidate (prioritize answer_index, then distill_answer if use_cot)
-                ai_val = None
-                if "answer_index" in r.index and pd.notna(r["answer_index"]):
+                if data_format == "mc":
                     try:
-                        ai_val = int(r["answer_index"]) + 1
-                    except Exception:
+                        opts = literal_eval(r["options"])
+                    except Exception as e:
+                        total_errors += 1
+                        logging.error(f"Skipping eval row idx={idx}: reason=options_parse_failed: {e}")
+                        if self.cfg.debug:
+                            dbg_write_log(f"[SKIP idx={idx}] options parse failed: {e}")
+                            dbg_write_jsonl(
+                                {
+                                    "idx": idx,
+                                    "reason": "options_parse_failed",
+                                    "raw_options": r.get("options"),
+                                }
+                            )
+                        continue
+
+                    ai_val = None
+                    if "answer_index" in r.index and pd.notna(r["answer_index"]):
                         try:
-                            ai_val = int(float(r["answer_index"])) + 1
+                            ai_val = int(r["answer_index"]) + 1
                         except Exception:
-                            ai_val = None
-                elif self.cfg.use_cot and "distill_answer" in r.index and pd.notna(r["distill_answer"]):
-                    try:
-                        ai_val = int(r["distill_answer"])
-                    except Exception:
+                            try:
+                                ai_val = int(float(r["answer_index"])) + 1
+                            except Exception:
+                                ai_val = None
+                    elif self.cfg.use_cot and "distill_answer" in r.index and pd.notna(r["distill_answer"]):
                         try:
-                            ai_val = int(float(r["distill_answer"]))
+                            ai_val = int(r["distill_answer"])
                         except Exception:
-                            ai_val = None
+                            try:
+                                ai_val = int(float(r["distill_answer"]))
+                            except Exception:
+                                ai_val = None
 
-                # always try to produce prompt (useful even for invalid answer indices)
-                try:
-                    prompt = self.format_prompt_qa(r, include_answer=False)
-                except Exception as e:
-                    prompt = None
-                    logging.error(f"Failed to format prompt for idx={idx}: {e}")
-                    if self.cfg.debug:
-                        dbg_write_log(f"[PROMPT FAIL idx={idx}] {e}")
-                        dbg_write_jsonl({"idx": idx, "reason": "format_prompt_failed", "error": str(e)})
-                    total_errors += 1
-                    continue
-
-                # tokenize single prompt to get token ids for debug (safe operation)
-                try:
-                    single_tok = tokenizer(
-                        prompt,
-                        truncation=True,
-                        max_length=self.cfg.max_input_length,
-                        padding=False,
-                        return_attention_mask=True,
-                        add_special_tokens=False,
-                    )
-                    input_ids_list = (
-                        single_tok["input_ids"]
-                        if isinstance(single_tok["input_ids"], list)
-                        else single_tok["input_ids"].tolist()
-                    )
-                    attn_mask_list = single_tok.get("attention_mask", None)
-                    # decode snippet
                     try:
-                        decoded_snip = tokenizer.decode(input_ids_list[:INPUT_ID_SHOW], skip_special_tokens=True)
-                    except Exception:
+                        prompt = self.format_prompt_qa(r, include_answer=False, new_format=False)
+                    except Exception as e:
+                        prompt = None
+                        logging.error(f"Failed to format prompt for idx={idx}: {e}")
+                        if self.cfg.debug:
+                            dbg_write_log(f"[PROMPT FAIL idx={idx}] {e}")
+                            dbg_write_jsonl(
+                                {
+                                    "idx": idx,
+                                    "reason": "format_prompt_failed",
+                                    "error": str(e),
+                                }
+                            )
+                        total_errors += 1
+                        continue
+
+                    try:
+                        single_tok = tokenizer(
+                            prompt,
+                            truncation=True,
+                            max_length=self.cfg.max_input_length,
+                            padding=False,
+                            return_attention_mask=True,
+                            add_special_tokens=False,
+                        )
+                        input_ids_list = (
+                            single_tok["input_ids"]
+                            if isinstance(single_tok["input_ids"], list)
+                            else single_tok["input_ids"].tolist()
+                        )
+                        attn_mask_list = single_tok.get("attention_mask", None)
+                        try:
+                            decoded_snip = tokenizer.decode(
+                                input_ids_list[:INPUT_ID_SHOW],
+                                skip_special_tokens=True,
+                            )
+                        except Exception:
+                            decoded_snip = ""
+                    except Exception as e:
+                        input_ids_list = []
+                        attn_mask_list = None
                         decoded_snip = ""
-                except Exception as e:
-                    input_ids_list = []
-                    attn_mask_list = None
-                    decoded_snip = ""
-                    logging.warning(f"Tokenization failed for idx={idx}: {e}")
+                        logging.warning(f"Tokenization failed for idx={idx}: {e}")
 
-                # If answer index invalid => log full debug and skip adding to prompts for generation
-                if ai_val is None:
-                    total_errors += 1
-                    logging.error(
-                        f"Skipping eval row idx={idx}: reason=No valid answer index, answer_index={r.get('answer_index')}, distill_answer={r.get('distill_answer')}, options={opts}"
-                    )
-                    if self.cfg.debug:
-                        dbg_write_log(f"[SKIP idx={idx}] no valid answer index")
-                        dbg_write_jsonl(
-                            {
-                                "idx": idx,
-                                "reason": "no_answer_index",
-                                "raw_answer_index": r.get("answer_index"),
-                                "distill_answer": r.get("distill_answer"),
-                                "options": opts,
-                                "prompt": prompt,
-                                "prompt_snippet": prompt[:PROMPT_SNIPPET_CHARS],
-                                "input_ids": input_ids_list[:INPUT_ID_SHOW],
-                                "decoded_input_snippet": decoded_snip[:DECODED_INPUT_CHARS],
-                            }
+                    if ai_val is None:
+                        total_errors += 1
+                        logging.error(
+                            "Skipping eval row idx=%s: reason=No valid answer index, "
+                            "answer_index=%s, distill_answer=%s, options=%s",
+                            idx,
+                            r.get("answer_index"),
+                            r.get("distill_answer"),
+                            opts,
                         )
-                    continue
+                        if self.cfg.debug:
+                            dbg_write_log(f"[SKIP idx={idx}] no valid answer index")
+                            dbg_write_jsonl(
+                                {
+                                    "idx": idx,
+                                    "reason": "no_answer_index",
+                                    "raw_answer_index": r.get("answer_index"),
+                                    "distill_answer": r.get("distill_answer"),
+                                    "options": opts,
+                                    "prompt": prompt,
+                                    "prompt_snippet": prompt[:PROMPT_SNIPPET_CHARS],
+                                    "input_ids": input_ids_list[:INPUT_ID_SHOW],
+                                    "decoded_input_snippet": decoded_snip[:DECODED_INPUT_CHARS],
+                                }
+                            )
+                        continue
 
-                if not (0 < int(ai_val) <= len(opts)):
-                    total_errors += 1
-
-                    logging.error(
-                        f"Skipping eval row idx={idx}: reason=Invalid answer index, answer_index={ai_val}, options_len={len(opts)}"
-                    )
-                    if self.cfg.debug:
-                        dbg_write_log(f"[SKIP idx={idx}] invalid answer index {ai_val} (options_len={len(opts)})")
-                        dbg_write_jsonl(
-                            {
-                                "idx": idx,
-                                "reason": "invalid_answer_index",
-                                "raw_answer_index": r.get("answer_index"),
-                                "int_answer_index": ai_val,
-                                "options": opts,
-                                "prompt": prompt,
-                                "prompt_snippet": prompt[:PROMPT_SNIPPET_CHARS],
-                                "input_ids": input_ids_list[:INPUT_ID_SHOW],
-                                "decoded_input_snippet": decoded_snip[:DECODED_INPUT_CHARS],
-                            }
+                    if not (0 < int(ai_val) <= len(opts)):
+                        total_errors += 1
+                        logging.error(
+                            "Skipping eval row idx=%s: reason=Invalid answer index, "
+                            "answer_index=%s, options_len=%s",
+                            idx,
+                            ai_val,
+                            len(opts),
                         )
-                    continue
+                        if self.cfg.debug:
+                            dbg_write_log(
+                                f"[SKIP idx={idx}] invalid answer index {ai_val} (options_len={len(opts)})"
+                            )
+                            dbg_write_jsonl(
+                                {
+                                    "idx": idx,
+                                    "reason": "invalid_answer_index",
+                                    "raw_answer_index": r.get("answer_index"),
+                                    "int_answer_index": ai_val,
+                                    "options": opts,
+                                    "prompt": prompt,
+                                    "prompt_snippet": prompt[:PROMPT_SNIPPET_CHARS],
+                                    "input_ids": input_ids_list[:INPUT_ID_SHOW],
+                                    "decoded_input_snippet": decoded_snip[:DECODED_INPUT_CHARS],
+                                }
+                            )
+                        continue
 
-                # this row is valid for evaluation
-                prompts.append(prompt)
-                corrects.append(str(int(ai_val)))
-                row_meta.append(
-                    {
-                        "index": idx,
-                        "options": opts,
-                        "expected": str(int(ai_val)),
-                        "raw_answer_index": r.get("answer_index"),
-                        "distill_answer": r.get("distill_answer"),
-                        "question": r.get("question"),
-                    }
-                )
+                    prompts.append(prompt)
+                    corrects.append(str(int(ai_val)))
+                    row_meta.append(
+                        {
+                            "index": idx,
+                            "prompt": prompt,
+                            "options": opts,
+                            "expected": str(int(ai_val)),
+                            "raw_answer_index": r.get("answer_index"),
+                            "distill_answer": r.get("distill_answer"),
+                            "question": r.get("question"),
+                        }
+                    )
 
-            # nothing to generate for this batch
+                # ----- new jsonl format branch -----
+                else:  # data_format == "jsonl"
+                    if "question" not in r.index or "answer" not in r.index:
+                        total_errors += 1
+                        if self.cfg.debug:
+                            dbg_write_log(
+                                f"[SKIP idx={idx}] missing 'question' or 'answer' column in jsonl row"
+                            )
+                            dbg_write_jsonl(
+                                {
+                                    "idx": idx,
+                                    "reason": "missing_columns",
+                                    "available_columns": list(r.index),
+                                }
+                            )
+                        continue
+
+                    try:
+                        prompt = self.format_prompt_qa(r, include_answer=False, new_format=True)
+                    except Exception as e:
+                        logging.error(f"Failed to format prompt (jsonl) idx={idx}: {e}")
+                        total_errors += 1
+                        if self.cfg.debug:
+                            dbg_write_log(f"[PROMPT FAIL idx={idx}] {e}")
+                            dbg_write_jsonl(
+                                {
+                                    "idx": idx,
+                                    "reason": "format_prompt_failed",
+                                    "error": str(e),
+                                }
+                            )
+                        continue
+
+                    if prompt is None:
+                        total_errors += 1
+                        if self.cfg.debug:
+                            dbg_write_log(f"[SKIP idx={idx}] prompt is None (jsonl)")
+                        continue
+
+                    gold = str(r["answer"]).strip()
+                    if gold == "":
+                        total_errors += 1
+                        if self.cfg.debug:
+                            dbg_write_log(f"[SKIP idx={idx}] empty gold answer (jsonl)")
+                        continue
+
+                    prompts.append(prompt)
+                    corrects.append(gold)
+                    row_meta.append(
+                        {
+                            "index": idx,
+                            "prompt": prompt,
+                            "options": None,
+                            "expected": gold,
+                            "raw_answer_index": r.get("answer_index"),
+                            "distill_answer": r.get("distill_answer"),
+                            "question": r.get("question"),
+                        }
+                    )
+
             if len(prompts) == 0:
                 continue
 
-            # batch-tokenize prompts (this we will send to model)
             inputs = tokenizer(
                 prompts,
                 return_tensors="pt",
@@ -456,24 +604,33 @@ class Trainer:
                 return_attention_mask=True,
             ).to(model.device)
 
-            # debug: log the first few tokenizations for context
             if self.cfg.debug:
                 for j, meta in enumerate(row_meta[: min(3, len(row_meta))]):
                     try:
                         in_ids = inputs.input_ids[j].tolist()
-                        attn_ids = inputs.attention_mask[j].tolist() if hasattr(inputs, "attention_mask") else None
-                        dbg_write_log(
-                            f"[BATCH INPUT idx={meta['index']}] prompt_snippet={prompts[j][:PROMPT_SNIPPET_CHARS]!r}"
+                        attn_ids = (
+                            inputs.attention_mask[j].tolist()
+                            if hasattr(inputs, "attention_mask")
+                            else None
                         )
                         dbg_write_log(
-                            f"[BATCH INPUT idx={meta['index']}] token_ids(first{INPUT_ID_SHOW})={in_ids[:INPUT_ID_SHOW]}"
+                            f"[BATCH INPUT idx={meta['index']}] "
+                            f"prompt_snippet={prompts[j][:PROMPT_SNIPPET_CHARS]!r}"
+                        )
+                        dbg_write_log(
+                            f"[BATCH INPUT idx={meta['index']}] "
+                            f"token_ids(first{INPUT_ID_SHOW})={in_ids[:INPUT_ID_SHOW]}"
                         )
                         try:
-                            decoded = tokenizer.decode(in_ids[:INPUT_ID_SHOW], skip_special_tokens=True)
+                            decoded = tokenizer.decode(
+                                in_ids[:INPUT_ID_SHOW],
+                                skip_special_tokens=True,
+                            )
                         except Exception:
                             decoded = ""
                         dbg_write_log(
-                            f"[BATCH INPUT idx={meta['index']}] decoded(first{DECODED_INPUT_CHARS})={decoded[:DECODED_INPUT_CHARS]!r}"
+                            f"[BATCH INPUT idx={meta['index']}] "
+                            f"decoded(first{DECODED_INPUT_CHARS})={decoded[:DECODED_INPUT_CHARS]!r}"
                         )
                         dbg_write_jsonl(
                             {
@@ -482,174 +639,173 @@ class Trainer:
                                 "prompt": prompts[j],
                                 "prompt_snippet": prompts[j][:PROMPT_SNIPPET_CHARS],
                                 "input_ids": in_ids[:INPUT_ID_SHOW],
-                                "attention_mask": attn_ids[:INPUT_ID_SHOW] if attn_ids is not None else None,
+                                "attention_mask": attn_ids[:INPUT_ID_SHOW]
+                                if attn_ids is not None
+                                else None,
                                 "expected": meta["expected"],
                                 "options": meta["options"],
+                                "data_format": data_format,
                             }
                         )
                     except Exception as e:
-                        dbg_write_log(f"[DEBUG WARNING] failed to log batch input idx={meta['index']}: {e}")
+                        dbg_write_log(
+                            f"[DEBUG WARNING] failed to log batch input idx={meta['index']}: {e}"
+                        )
 
             with torch.no_grad():
                 try:
                     outputs = model.generate(
                         inputs.input_ids,
-                        attention_mask=inputs.attention_mask if hasattr(inputs, "attention_mask") else None,
+                        attention_mask=inputs.attention_mask
+                        if hasattr(inputs, "attention_mask")
+                        else None,
                         max_new_tokens=self.cfg.max_new_tokens,
                         num_return_sequences=1,
                         pad_token_id=tokenizer.eos_token_id,
                     )
                 except Exception as e:
-                    total_errors += 1
-                    logging.error(f"Model.generate failed on batch starting idx {batch_indices[0]}: {e}")
+                    # здесь различаем старую и новую семантику
+                    if data_format == "jsonl":
+                        total_errors += len(prompts)
+                    else:  # mc
+                        total_errors += 1
+                    logging.error(
+                        f"Model.generate failed on batch starting idx {batch_indices[0]}: {e}"
+                    )
                     if self.cfg.debug:
-                        dbg_write_log(f"[GEN ERROR] batch_start_idx={batch_indices[0]} error={repr(e)}")
+                        dbg_write_log(
+                            f"[GEN ERROR] batch_start_idx={batch_indices[0]} "
+                            f"error={repr(e)} data_format={data_format}"
+                        )
                     continue
 
             responses = tokenizer.batch_decode(outputs, skip_special_tokens=True)
+            n = min(len(responses), len(corrects), len(row_meta), outputs.size(0))
 
-            n = min(len(responses), len(corrects), len(row_meta))
             if not (len(responses) == len(corrects) == len(row_meta)):
                 logging.warning(
-                    f"Length mismatch in eval batch: responses={len(responses)}, corrects={len(corrects)}, meta={len(row_meta)}"
+                    "Length mismatch in eval batch: responses=%s, corrects=%s, meta=%s",
+                    len(responses),
+                    len(corrects),
+                    len(row_meta),
                 )
                 if self.cfg.debug:
                     dbg_write_log(
-                        f"[LENGTH MISMATCH] responses={len(responses)} corrects={len(corrects)} meta={len(row_meta)}"
+                        "[LENGTH MISMATCH] "
+                        f"responses={len(responses)} corrects={len(corrects)} meta={len(row_meta)}"
                     )
 
-            for resp, corr, meta in zip(responses[:n], corrects[:n], row_meta[:n]):
+            for k, (resp, corr, meta) in enumerate(zip(responses[:n], corrects[:n], row_meta[:n])):
                 try:
                     matches = ANSWER_PATTERN.findall(resp)
-                    gen = matches[-1] if matches else None
-                    is_correct = gen == corr
-                    total_correct += int(is_correct)
-                    processed += 1
+                    gen = matches[-1].strip() if matches else None
 
-                    if self.cfg.debug:
-                        dbg_obj = {
-                            "idx": meta["index"],
-                            "reason": "evaluated",
-                            "prompt": self.format_prompt_qa(df.loc[meta["index"]], include_answer=False),
-                            "prompt_snippet": self.format_prompt_qa(df.loc[meta["index"]], include_answer=False)[
-                                :PROMPT_SNIPPET_CHARS
-                            ],
-                            "expected": meta["expected"],
-                            "options": meta["options"],
-                            "generated_text": resp[:GENERATED_TEXT_SNIPPET],
-                            "generated_ids": outputs[0].tolist()[:GENERATED_ID_SHOW]
-                            if isinstance(outputs, (list, tuple))
-                            else outputs[:GENERATED_ID_SHOW].tolist(),
-                            "regex_matches": matches,
-                            "is_correct": is_correct,
-                        }
-                        dbg_write_jsonl(dbg_obj)
+                    gen_only_text = ""
+                    try:
+                        out_ids = outputs[k]
+                        # input length per batch is the length of input_ids (before generation)
+                        start_gen = inputs.input_ids.shape[1]
+                        gen_only_ids = out_ids[start_gen:]
+                        gen_only_text = tokenizer.decode(gen_only_ids, skip_special_tokens=True)
+                    except Exception:
+                        # if something went wrong — at least use the full resp
+                        gen_only_text = resp
 
-                        # human readable short log
-                        if not is_correct:
+                    if preview_examples_logged < preview_examples_target:
+                        prompt_for_log = meta.get("prompt", "")
+                        question_for_log = meta.get("question", "")
+
+                        logging.info(
+                            f"\n===== PREVIEW {desc} example #{preview_examples_logged + 1} "
+                            f"(row idx={meta.get('index')}) =====\n"
+                            f"QUESTION:\n{question_for_log}\n\n"
+                            f"PROMPT (what model sees):\n{prompt_for_log}\n\n"
+                            f"MODEL FULL OUTPUT (decoded(outputs)):\n{resp}\n\n"
+                            f"MODEL NEW TOKENS ONLY (answer part):\n{gen_only_text}\n\n"
+                            f"PARSED ANSWER ([[...]]): {gen}\n"
+                            f"GOLD ANSWER: {corr}\n"
+                            "============================================"
+                        )
+                        preview_examples_logged += 1
+
+                    if data_format == "jsonl" and gen is None:
+                        total_errors += 1
+                        if self.cfg.debug:
                             dbg_write_log(
-                                f"[MISMATCH idx={meta['index']}] expected={meta['expected']} regex_matches={matches} -- logged to jsonl"
+                                f"[PARSE MISS idx={meta['index']}] "
+                                f"no answer marker found in generated text"
                             )
+                            dbg_write_jsonl(
+                                {
+                                    "idx": meta["index"],
+                                    "reason": "no_answer_marker",
+                                    "generated_text_snippet": resp[:GENERATED_TEXT_SNIPPET],
+                                    "regex_matches": matches,
+                                    "expected": meta["expected"],
+                                    "data_format": data_format,
+                                }
+                            )
+                    else:
+                        is_correct = (gen == corr)
+                        total_correct += int(is_correct)
+                        processed += 1
+
+                        if self.cfg.debug:
+                            try:
+                                gen_ids = (
+                                    outputs[k].tolist()[:GENERATED_ID_SHOW]
+                                    if hasattr(outputs, "tolist")
+                                    else None
+                                )
+                            except Exception:
+                                gen_ids = None
+
+                            dbg_prompt = meta.get("prompt") or self.format_prompt_qa(
+                                df.loc[meta["index"]],
+                                include_answer=False,
+                                new_format=(data_format == "jsonl"),
+                            )
+
+                            dbg_obj = {
+                                "idx": meta["index"],
+                                "reason": "evaluated",
+                                "prompt": dbg_prompt,
+                                "prompt_snippet": dbg_prompt[:PROMPT_SNIPPET_CHARS],
+                                "expected": meta["expected"],
+                                "options": meta["options"],
+                                "generated_text": resp[:GENERATED_TEXT_SNIPPET],
+                                "generated_ids": gen_ids,
+                                "regex_matches": matches,
+                                "is_correct": is_correct,
+                                "data_format": data_format,
+                            }
+                            dbg_write_jsonl(dbg_obj)
+
+                            if not is_correct:
+                                dbg_write_log(
+                                    f"[MISMATCH idx={meta['index']} format={data_format}] "
+                                    f"expected={meta['expected']} regex_matches={matches}"
+                                )
 
                 except Exception as e:
                     total_errors += 1
                     logging.error(f"Eval parse error idx={meta.get('index')}: {e}")
                     if self.cfg.debug:
                         dbg_write_log(
-                            f"[PARSE ERROR] idx={meta.get('index')} error={repr(e)} resp_snippet={resp[:1000]!r}"
+                            f"[PARSE ERROR] idx={meta.get('index')} "
+                            f"error={repr(e)} resp_snippet={resp[:1000]!r}"
                         )
                 pbar.update(1)
 
-            # update progress display
             if processed:
-                pbar.set_postfix({"acc": f"{(total_correct / processed) * 100:.2f}%", "errors": total_errors})
+                pbar.set_postfix(
+                    {
+                        "acc": f"{(total_correct / processed) * 100:.2f}%",
+                        "errors": total_errors,
+                    }
+                )
             else:
                 pbar.set_postfix({"acc": "0%", "errors": total_errors})
-
-        pbar.close()
-        accuracy = total_correct / (processed if processed else 1.0)
-        self._add_result(epoch=epoch, accuracy=accuracy, desc=desc)
-        return accuracy
-
-
-    def _evaluate_qa_jsonl_simple(self, model, df: pd.DataFrame, tokenizer, epoch: int, desc: str) -> float:
-
-        model.eval()
-        total_correct = 0
-        total_errors = 0
-        processed = 0
-
-        pbar = tqdm(total=len(df), desc=desc, leave=False)
-
-        indices = list(range(len(df)))
-        for i in range(0, len(df), self.cfg.eval_batch_size):
-            batch_indices = indices[i : i + self.cfg.eval_batch_size]
-            rows = [df.iloc[idx] for idx in batch_indices]
-
-            prompts = []
-            corrects = []
-
-            for r in rows:
-                if "question" not in r.index or "answer" not in r.index:
-                    total_errors += 1
-                    continue
-
-                try:
-                    prompt = self.format_prompt_qa(r, include_answer=False)
-                except Exception as e:
-                    logging.error(f"Failed to format prompt (jsonl) idx={r.name}: {e}")
-                    total_errors += 1
-                    continue
-
-                if prompt is None:
-                    total_errors += 1
-                    continue
-
-                gold = str(r["answer"]).strip()
-                if gold == "":
-                    total_errors += 1
-                    continue
-
-                prompts.append(prompt)
-                corrects.append(gold)
-
-            if not prompts:
-                continue
-
-            inputs = tokenizer(
-                prompts,
-                return_tensors="pt",
-                padding=True,
-                truncation=True,
-                max_length=self.cfg.max_input_length_eval,
-                return_attention_mask=True,
-            ).to(model.device)
-
-            with torch.no_grad():
-                try:
-                    outputs = model.generate(
-                        inputs.input_ids,
-                        attention_mask=inputs.attention_mask if hasattr(inputs, "attention_mask") else None,
-                        max_new_tokens=self.cfg.max_new_tokens,
-                        num_return_sequences=1,
-                        pad_token_id=tokenizer.eos_token_id,
-                    )
-                except Exception as e:
-                    logging.error(f"Model.generate failed (jsonl) on batch starting idx {batch_indices[0]}: {e}")
-                    total_errors += len(prompts)
-                    continue
-
-            responses = tokenizer.batch_decode(outputs, skip_special_tokens=True)
-
-            for resp, corr in zip(responses, corrects):
-                matches = ANSWER_PATTERN.findall(resp)
-                gen = matches[-1].strip() if matches else None
-                if gen is None:
-                    total_errors += 1
-                else:
-                    total_correct += int(gen == corr)
-                    processed += 1
-                pbar.update(1)
 
         pbar.close()
         accuracy = total_correct / (processed if processed else 1.0)
@@ -681,9 +837,34 @@ class Trainer:
 
         if self.cfg.run_eval_on_start:
             logging.info("Evaluating model before training")
-            test_balanced_df = pd.read_csv(self.cfg.test_balanced_path, sep="\t")
-            test_acc = self.evaluate_qa(self.model, test_balanced_df, self.tokenizer, 0, desc="test_balanced")
+
+
+            if test_df is not None and len(test_df) > 0:
+                test_balanced_df = test_df
+                logging.info(
+                    f"Using in-memory test_df for initial eval: {len(test_balanced_df)} rows"
+                )
+            else:
+                # Фолбэк на старое поведение, если вдруг test_df пустой
+                if self.cfg.test_balanced_path.endswith((".jsonl", ".json")):
+                    test_balanced_df = pd.read_json(self.cfg.test_balanced_path, lines=True)
+                else:
+                    test_balanced_df = pd.read_csv(self.cfg.test_balanced_path, sep="\t")
+                logging.info(
+                    f"Loaded test_balanced_df from path {self.cfg.test_balanced_path}: "
+                    f"{len(test_balanced_df)} rows"
+                )
+
+            test_acc = self.evaluate_qa(
+                self.model,
+                test_balanced_df,
+                self.tokenizer,
+                0,
+                desc="test_balanced",
+                data_format="jsonl",  # для gsm8k-jsonl
+            )
             logging.info(f"TEST BALANCED QA Accuracy: {test_acc * 100:.2f}%")
+
 
         for epoch in range(self.cfg.epochs):
             self.model.train()
@@ -754,11 +935,21 @@ class Trainer:
                 epoch_matches_eval_test_period = (epoch + 1) % self.cfg.eval_test_period == 0
             if not skip_eval_test and (is_last_epoch or epoch_matches_eval_test_period):
                 # balanced test (from path)
-                test_balanced_df = pd.read_csv(self.cfg.test_balanced_path, sep="\t")
+                if self.cfg.test_balanced_path.endswith((".jsonl", ".json")):
+                    test_balanced_df = pd.read_json(self.cfg.test_balanced_path, lines=True)
+                else:
+                    test_balanced_df = pd.read_csv(self.cfg.test_balanced_path, sep="\t")
+
                 test_acc = self.evaluate_qa(
-                    self.model, test_balanced_df, self.tokenizer, epoch + 1, desc="test_balanced"
+                    self.model,
+                    test_balanced_df,
+                    self.tokenizer,
+                    epoch + 1,
+                    desc="test_balanced",
+                    data_format="jsonl",
                 )
                 logging.info(f"TEST BALANCED QA Accuracy: {test_acc * 100:.2f}%")
+
 
             # save checkpoint (disabled by default, enable if you want)
             # epoch_dir = os.path.join(self.cfg.save_dir, f"epoch_{epoch+1}")

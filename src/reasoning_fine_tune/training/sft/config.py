@@ -14,23 +14,28 @@ class TrainConfig:
     save_dir: str = "/complexity-aware-fine-tuning/data/data_splits/cross_entropy/phi/"
 
     # model / training
+    # model / training
     base_model: str = "/home/dviazhev/qa_finetune/Phi-4-mini-instruct"
-    lr: float = 2e-4
-    batch_size: int = 2
-    gradient_accumulation: int = 8
+    lr: float = 1e-4
+    batch_size: int = 8
+    gradient_accumulation: int = 32
     epochs: int = 3
     log_interval: int = 50
-    debug: bool = False
+    debug: bool = True
     run_eval_on_start = True
     eval_validation_period = 1
-    eval_test_period: int | list[int] = 1
+    eval_test_period: int | list[int] = 25
     eval_batch_size = 1
+    
+    train_sample_size: int | None = 3000 
+    val_sample_size: int | None = 1000
+    test_sample_size: int | None = 1000
 
     # prompt / behaviour
     use_cot: bool = False
-    max_input_length: int = 12888
+    max_input_length: int = 2048
     max_input_length_eval: int = 2048
-    max_new_tokens: int = 12888
+    max_new_tokens: int = 30
 
     # runtime
     seed: int = 42
