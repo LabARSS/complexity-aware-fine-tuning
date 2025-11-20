@@ -6,11 +6,15 @@ ANSWER_MARKER = ["[[", "]]" ]
 ANSWER_PATTERN = re.compile(r'.*?\[\[\s*(\d+)\s*\]\].*?', re.DOTALL)
 
 
-def cot_sys_prompt(use_cot: bool, subject: Optional[str] = None) -> str:
-    if subject:
-        base = f"The following are multiple choice questions about {subject}."
+def cot_sys_prompt(use_cot: bool, subject: Optional[str] = None, options=False) -> str:
+    if options:
+        if subject:
+            base = f"The following are multiple choice questions about {subject}."
+        else:
+            base = "The following are multiple choice questions."
     else:
-        base = "The following are multiple choice questions."
+        base = ""
+        
     if use_cot:
         base += f" Explain your thinking step-by-step. At the end, write the correct answer number using {ANSWER_MARKER[0]}number{ANSWER_MARKER[1]} format."
     else:
