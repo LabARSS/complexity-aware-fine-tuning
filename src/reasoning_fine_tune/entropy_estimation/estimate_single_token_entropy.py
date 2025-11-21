@@ -106,8 +106,6 @@ def estimate_dataset(config: EstimateDatasetConfig):
             answer_token_map.extend([i] * len(token_decoded))
             answer += token_decoded
 
-        df.at[index, field_ans] = answer
-
         answer_marker_start = answer.find(answer_marker[0])
         answer_marker_end = answer.find(answer_marker[1])
 
