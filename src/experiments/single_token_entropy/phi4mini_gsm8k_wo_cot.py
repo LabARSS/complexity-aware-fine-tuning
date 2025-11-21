@@ -12,7 +12,9 @@ from reasoning_fine_tune.utils.correctness import check_answer_correct_gsm8k
 class Phi4Config(EstimateDatasetConfig):
     in_filename: str = str(Path(__file__).parent.joinpath("../../../data/source/gsm8k/gsm8k_train.jsonl").resolve())
     out_filename: str = str(
-        Path(__file__).parent.joinpath("../../../data/out/single_token_entropy/gsm8k_phi4mini.jsonl").resolve()
+        Path(__file__)
+        .parent.joinpath("../../../data/out/single_token_entropy/gsm8k_phi4mini_single_token.jsonl")
+        .resolve()
     )
     dump_every: int = 100
     max_new_tokens: int = 16384
