@@ -98,13 +98,10 @@ def ask_mcq_once(question: str,
     is_correct = (ans_letter.upper() == (gold_letter or "").upper())
 
     return {
-        "letters": letters,
-        "options": {letters[i]: choices[i] for i in range(len(choices))},
-        "gold": (gold_letter or "").upper(),
         "answer": ans_letter,
         "is_correct": is_correct,
         "thinking": reasoning_text or "",
-        "raw": {"content": content},
+        "raw_response": content
     }
 
 def _branch_a(q, choices, gold, model, max_tokens, subject, temperature):
@@ -138,12 +135,8 @@ def ask_mcq_explain(question: str,
     reasoning_text = getattr(msg, "reasoning", None) or ""
 
     return {
-        "letters": letters,
-        "options": {letters[i]: choices[i] for i in range(len(choices))},
-        "gold": (gold_letter or "").upper(),
-        "response": content,
         "thinking": reasoning_text,
-        "raw": {"content": content},
+        "raw_response": content
     }
 
 def _branch_b(q, choices, gold, model, max_tokens, subject, temperature):
@@ -183,13 +176,10 @@ def ask_mcq_error_review(question: str,
     reasoning_text = getattr(msg, "reasoning", None) or ""
 
     return {
-        "letters": letters,
-        "options": {letters[i]: choices[i] for i in range(len(choices))},
         "gold": gold_letter,
-        "model_answer": (model_letter_from_a or "").upper(),
-        "response": content,
+        "preivous_answer": (model_letter_from_a or "").upper(),
         "thinking": reasoning_text,
-        "raw": {"content": content},
+        "raw_response": content
     }
 
 def _branch_c(q, choices, gold, model, max_tokens, subject, prev_answer, prev_reasoning, temperature):
@@ -231,7 +221,7 @@ def _load_incorrect_from_branch_a(a_jsonl_path: str, expected_model: str | None)
                 is_correct = (ans == gold)
             if not is_correct:
                 bad[int(row_id)] = {
-                    "model_answer": ans,
+                    "preivous_answer": ans,
                     "thinking": out.get("thinking") or "",
                 }
     return bad
@@ -252,7 +242,7 @@ def _load_and_clean_existing(out_jsonl: str) -> set[int]:
                 rec = json.loads(line)
                 # Check if output has error
                 if "error" not in rec.get("output", {}):
-                    rid = rec.get("input", {}).get("row_id")
+                    rid = rec.get("input", {}).get("question_id")
                     if rid is not None:
                         valid_ids.add(int(rid))
                     valid_lines.append(line)
@@ -271,6 +261,7 @@ def _load_and_clean_existing(out_jsonl: str) -> set[int]:
 def _run_job(job):
     (
         row_id,
+        question_id,
         question,
         choices,
         gold_letter,
@@ -296,7 +287,7 @@ def _run_job(job):
 
     letters = letters_for(len(choices))
     record_in = {
-        "row_id": row_id,
+        "question_id": question_id,
         "subject": subject or "",
         "question": question,
         "options": {letters[i]: choices[i] for i in range(len(choices))},
@@ -352,7 +343,7 @@ def synth_on_dataset(
 
             args_list = []
             for index, row in chunk.iterrows():
-                if index in existing_ids:
+                if row["question_id"] in existing_ids:
                     continue
 
                 if limit is not None and written >= limit:
@@ -372,6 +363,8 @@ def synth_on_dataset(
                 if len(letters) < 2 or not q:
                     continue
 
+                question_id = row_dict.get("question_id")
+
                 gold_letter = (
                     norm_letter_dyn(row_dict.get("answer"), letters)
                     or norm_letter_dyn(row_dict.get("answer_index"), letters)
@@ -387,7 +380,7 @@ def synth_on_dataset(
                     prev_ans = a_incorrect_map[index].get("model_answer")
                     prev_thinking = a_incorrect_map[index].get("thinking")
 
-                args_list.append((index, q, choices, gold_letter, model, max_tokens, branch, subject, prev_ans, prev_thinking, temperature))
+                args_list.append((index, question_id, q, choices, gold_letter, model, max_tokens, branch, subject, prev_ans, prev_thinking, temperature))
 
             if not args_list:
                 continue
