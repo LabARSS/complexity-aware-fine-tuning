@@ -1,26 +1,28 @@
-import os, ast, json, re, logging, math, time
+import ast
+import json
+import logging
+import math
+import os
+import re
 from concurrent import futures
 
 import pandas as pd
 from tqdm import tqdm
 
-from core.utils.openrouter import openrouter
-from core.utils.chunker import chunker
-
-from core.prompts.mmlu_single_token_answer import (
-    single_token_sys_prompt,
-    single_token_answer_prompt,
-)
-
 from core.prompts.mmlu_branches_aug import (
-    option_ids,
+    error_review_messages,
+    error_review_sys_prompt,
     explain_sys_prompt,
     explain_user_prompt,
-    error_review_sys_prompt,
-    error_review_messages,
 )
+from core.prompts.mmlu_single_token_answer import (
+    single_token_answer_prompt,
+    single_token_sys_prompt,
+)
+from core.utils.chunker import chunker
+from core.utils.openrouter import openrouter
 
-ALL_LETTERS = [chr(c) for c in range(ord("A"), ord("Z")+1)]
+ALL_LETTERS = [chr(c) for c in range(ord("A"), ord("Z") + 1)]
 logging.basicConfig(level=logging.WARNING, format="%(levelname)s:%(message)s")
 logging.getLogger("httpx").setLevel(logging.WARNING)
 
@@ -30,9 +32,11 @@ def letters_for(n: int):
     n = max(0, min(int(n), 26))
     return ALL_LETTERS[:n]
 
+
 def parse_options(s):
     lst = ast.literal_eval(s)
     return list(map(str, lst))
+
 
 def norm_letter_dyn(x, letters):
     s = ("" if x is None else str(x)).strip().upper()
@@ -42,12 +46,16 @@ def norm_letter_dyn(x, letters):
         i = int(s)
         if 0 <= i < len(letters):
             return letters[i]
-        if 0 <= i-1 < len(letters):
-            return letters[i-1]
+        if 0 <= i - 1 < len(letters):
+            return letters[i - 1]
     return ""
 
+
 def _subject_from_row(row_dict: dict) -> str | None:
-    return (row_dict.get("base_cluster") or row_dict.get("category") or row_dict.get("subject") or row_dict.get("src") or "").strip() or None
+    return (
+        row_dict.get("base_cluster") or row_dict.get("category") or row_dict.get("subject") or row_dict.get("src") or ""
+    ).strip() or None
+
 
 def _extract_letter_from_text(txt: str, letters: list[str]) -> str:
     # extract first allow letter from text
@@ -63,27 +71,28 @@ def _extract_letter_from_text(txt: str, letters: list[str]) -> str:
 
 
 # ------------ branch A ------------
-def ask_mcq_once(question: str,
-                 choices: list[str],
-                 gold_letter: str,
-                 model: str,
-                 max_tokens: int,
-                 subject: str | None,
-                 temperature: float = 0) -> dict:
+def ask_mcq_once(
+    question: str,
+    choices: list[str],
+    gold_letter: str,
+    model: str,
+    max_tokens: int,
+    subject: str | None,
+    temperature: float = 0,
+) -> dict:
     letters = letters_for(len(choices))
     sys_prompt = single_token_sys_prompt(subject)
     user_prompt = single_token_answer_prompt(question, choices)
-
 
     completion = openrouter.chat.completions.create(
         model=model,
         messages=[
             {"role": "system", "content": sys_prompt},
-            {"role": "user",   "content": user_prompt},
+            {"role": "user", "content": user_prompt},
         ],
         max_tokens=max_tokens,
         temperature=temperature,
-        extra_body={ "include_reasoning": True }
+        extra_body={"include_reasoning": True},
     )
     msg = completion.choices[0].message
     content = msg.content or ""
@@ -95,27 +104,25 @@ def ask_mcq_once(question: str,
         if ans_letter not in letters:
             ans_letter = ""
 
-    is_correct = (ans_letter.upper() == (gold_letter or "").upper())
+    is_correct = ans_letter.upper() == (gold_letter or "").upper()
 
-    return {
-        "answer": ans_letter,
-        "is_correct": is_correct,
-        "thinking": reasoning_text or "",
-        "raw_response": content
-    }
+    return {"answer": ans_letter, "is_correct": is_correct, "thinking": reasoning_text or "", "raw_response": content}
+
 
 def _branch_a(q, choices, gold, model, max_tokens, subject, temperature):
     return ask_mcq_once(q, choices, gold, model=model, max_tokens=max_tokens, subject=subject, temperature=temperature)
 
 
 # ------------ branch B ------------
-def ask_mcq_explain(question: str,
-                    choices: list[str],
-                    gold_letter: str,
-                    model: str,
-                    max_tokens: int,
-                    subject: str | None,
-                    temperature: float = 0) -> dict:
+def ask_mcq_explain(
+    question: str,
+    choices: list[str],
+    gold_letter: str,
+    model: str,
+    max_tokens: int,
+    subject: str | None,
+    temperature: float = 0,
+) -> dict:
     letters = letters_for(len(choices))
     sys_prompt = explain_sys_prompt(subject)
     user_prompt = explain_user_prompt(question, choices, gold_letter)
@@ -124,35 +131,37 @@ def ask_mcq_explain(question: str,
         model=model,
         messages=[
             {"role": "system", "content": sys_prompt},
-            {"role": "user",   "content": user_prompt},
+            {"role": "user", "content": user_prompt},
         ],
         max_tokens=max_tokens,
         temperature=temperature,
-        extra_body={ "include_reasoning": True }
+        extra_body={"include_reasoning": True},
     )
     msg = completion.choices[0].message
     content = msg.content or ""
     reasoning_text = getattr(msg, "reasoning", None) or ""
 
-    return {
-        "thinking": reasoning_text,
-        "raw_response": content
-    }
+    return {"thinking": reasoning_text, "raw_response": content}
+
 
 def _branch_b(q, choices, gold, model, max_tokens, subject, temperature):
-    return ask_mcq_explain(q, choices, gold, model=model, max_tokens=max_tokens, subject=subject, temperature=temperature)
+    return ask_mcq_explain(
+        q, choices, gold, model=model, max_tokens=max_tokens, subject=subject, temperature=temperature
+    )
 
 
 # ------------ branch C ------------
-def ask_mcq_error_review(question: str,
-                         choices: list[str],
-                         gold_letter: str,
-                         model_letter_from_a: str,
-                         prev_reasoning_from_a: str,
-                         model: str,
-                         max_tokens: int,
-                         subject: str | None,
-                         temperature: float = 0) -> dict:
+def ask_mcq_error_review(
+    question: str,
+    choices: list[str],
+    gold_letter: str,
+    model_letter_from_a: str,
+    prev_reasoning_from_a: str,
+    model: str,
+    max_tokens: int,
+    subject: str | None,
+    temperature: float = 0,
+) -> dict:
     letters = letters_for(len(choices))
     sys_prompt = error_review_sys_prompt(subject)
     extra_msgs = error_review_messages(
@@ -168,7 +177,7 @@ def ask_mcq_error_review(question: str,
         messages=[{"role": "system", "content": sys_prompt}] + extra_msgs,
         max_tokens=max_tokens,
         temperature=temperature,
-        extra_body={ "include_reasoning": True }
+        extra_body={"include_reasoning": True},
     )
 
     msg = completion.choices[0].message
@@ -179,8 +188,9 @@ def ask_mcq_error_review(question: str,
         "gold": gold_letter,
         "preivous_answer": (model_letter_from_a or "").upper(),
         "thinking": reasoning_text,
-        "raw_response": content
+        "raw_response": content,
     }
+
 
 def _branch_c(q, choices, gold, model, max_tokens, subject, prev_answer, prev_reasoning, temperature):
     return ask_mcq_error_review(
@@ -218,7 +228,7 @@ def _load_incorrect_from_branch_a(a_jsonl_path: str, expected_model: str | None)
             ans = (out.get("answer") or "").strip().upper()
             is_correct = out.get("is_correct")
             if is_correct is None:
-                is_correct = (ans == gold)
+                is_correct = ans == gold
             if not is_correct:
                 bad[int(row_id)] = {
                     "preivous_answer": ans,
@@ -230,14 +240,15 @@ def _load_incorrect_from_branch_a(a_jsonl_path: str, expected_model: str | None)
 def _load_and_clean_existing(out_jsonl: str) -> set[int]:
     if not os.path.exists(out_jsonl):
         return set()
-    
+
     valid_ids = set()
     valid_lines = []
-    
+
     with open(out_jsonl, "r", encoding="utf-8") as f:
         for line in f:
             line = line.strip()
-            if not line: continue
+            if not line:
+                continue
             try:
                 rec = json.loads(line)
                 # Check if output has error
@@ -248,12 +259,12 @@ def _load_and_clean_existing(out_jsonl: str) -> set[int]:
                     valid_lines.append(line)
             except Exception:
                 pass
-    
+
     # Rewrite file with only valid lines
     with open(out_jsonl, "w", encoding="utf-8") as f:
         for line in valid_lines:
             f.write(line + "\n")
-            
+
     return valid_ids
 
 
@@ -280,7 +291,9 @@ def _run_job(job):
         elif branch == "B":
             out = _branch_b(question, choices, gold_letter, model, max_tokens, subject, temperature)
         else:
-            out = _branch_c(question, choices, gold_letter, model, max_tokens, subject, prev_answer, prev_reasoning, temperature)
+            out = _branch_c(
+                question, choices, gold_letter, model, max_tokens, subject, prev_answer, prev_reasoning, temperature
+            )
     except Exception as e:
         logging.warning(f"[idx={row_id}] error: {e}")
         out = {"error": str(e)}
@@ -296,7 +309,7 @@ def _run_job(job):
         "branch": branch,
     }
     if branch == "C":
-        record_in["model_answer_from_A"] = (prev_answer or "")
+        record_in["model_answer_from_A"] = prev_answer or ""
 
     return row_id, record_in, out
 
@@ -311,11 +324,13 @@ def synth_on_dataset(
     branch: str,
     chunk_size: int,
     a_jsonl_path: str | None,
-    temperature: float = 0, # [warning]: temperature for all branches
+    temperature: float = 0,  # [warning]: temperature for all branches
 ):
     assert branch in {"A", "B", "C"}
     if branch == "C":
-        assert a_jsonl_path and os.path.exists(a_jsonl_path), "Branch C requires a valid path to branch-A results (a_jsonl_path)."
+        assert a_jsonl_path and os.path.exists(a_jsonl_path), (
+            "Branch C requires a valid path to branch-A results (a_jsonl_path)."
+        )
 
     df = pd.read_csv(in_filename, sep="\t", dtype=str, keep_default_na=False)
     total_rows = len(df) if limit is None else min(len(df), int(limit))
@@ -343,7 +358,7 @@ def synth_on_dataset(
 
             args_list = []
             for index, row in chunk.iterrows():
-                if row["question_id"] in existing_ids:
+                if int(row["question_id"]) in existing_ids:
                     continue
 
                 if limit is not None and written >= limit:
@@ -365,9 +380,8 @@ def synth_on_dataset(
 
                 question_id = row_dict.get("question_id")
 
-                gold_letter = (
-                    norm_letter_dyn(row_dict.get("answer"), letters)
-                    or norm_letter_dyn(row_dict.get("answer_index"), letters)
+                gold_letter = norm_letter_dyn(row_dict.get("answer"), letters) or norm_letter_dyn(
+                    row_dict.get("answer_index"), letters
                 )
                 if not gold_letter:
                     continue
@@ -380,7 +394,22 @@ def synth_on_dataset(
                     prev_ans = a_incorrect_map[index].get("model_answer")
                     prev_thinking = a_incorrect_map[index].get("thinking")
 
-                args_list.append((index, question_id, q, choices, gold_letter, model, max_tokens, branch, subject, prev_ans, prev_thinking, temperature))
+                args_list.append(
+                    (
+                        index,
+                        question_id,
+                        q,
+                        choices,
+                        gold_letter,
+                        model,
+                        max_tokens,
+                        branch,
+                        subject,
+                        prev_ans,
+                        prev_thinking,
+                        temperature,
+                    )
+                )
 
             if not args_list:
                 continue
