@@ -32,10 +32,8 @@ def count_accuracy(jsonl_path: str) -> None:
                 entry = json.loads(line)
                 total += 1
 
-                output = entry.get("output")
-
-                gold = output.get("gold")
-                answer = output.get("answer")
+                gold = entry["input"]["gold"]
+                answer = entry["output"]["answer"]
 
                 if gold == answer:
                     correct += 1
