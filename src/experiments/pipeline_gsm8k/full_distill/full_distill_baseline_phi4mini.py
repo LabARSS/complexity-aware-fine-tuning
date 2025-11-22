@@ -13,8 +13,9 @@ if __name__ == "__main__":
     cfg.run_eval_on_start = False
     cfg.max_input_length = 16384
     cfg.max_new_tokens = 16384
-    cfg.batch_size = 4
-    cfg.gradient_accumulation = 64
+    cfg.batch_size = 8
+    cfg.eval_batch_size = 8
+    cfg.gradient_accumulation = 32
 
     cfg.save_dir = str(
         Path(__file__).parent.joinpath("../../../../artifacts/pipeline_gsm8k/full_distill_baseline/phi4")
