@@ -115,6 +115,11 @@ def estimate_dataset(config: EstimateDatasetConfig):
             extracted_answer = answer[answer_marker_start + len(answer_marker[0]) : answer_marker_end]
             extracted_answer_position = answer_marker_start + len(answer_marker[0])
 
+        if index < 5:
+            print(
+                f"Answer: {answer}\n\n\n"
+            )
+
         if extracted_answer_position == -1:
             invalid_answers += 1
             continue
@@ -126,6 +131,11 @@ def estimate_dataset(config: EstimateDatasetConfig):
         entropy = compute_entropy_from_logits(final_token_logits)
         df.at[index, field_entropy_value] = entropy
 
+        if index < 5:
+            print(
+                f"Extracted answer: {extracted_answer}Answer position: {extracted_answer_position}/{len(outputs.scores)}\nExtracted answer token: {answer_raw[extracted_answer_position]} ({tokenizer.decode(answer_raw[extracted_answer_position].unsqueeze(0))})\nEntropy: {df.at[index, field_entropy_value]}\n\n\n"
+            )
+
         try:
             df.at[index, field_ans] = extracted_answer
             df.at[index, field_ans_correct] = config.check_answer_correct(df.iloc[index], extracted_answer)
@@ -134,8 +144,9 @@ def estimate_dataset(config: EstimateDatasetConfig):
 
         if index < 5:
             print(
-                f"Answer: {answer}\nExtracted answer: {extracted_answer}\nAnswer position: {extracted_answer_position}/{len(outputs.scores)}\nExtracted answer token: {answer_raw[extracted_answer_position]} ({tokenizer.decode(answer_raw[extracted_answer_position].unsqueeze(0))})\nEntropy: {df.at[index, field_entropy_value]}\nis_correct: {df.at[index, field_ans_correct]}\n\n\n"
+                f"Correct: {df.at[index, field_ans_correct]}\n\n\n"
             )
+
 
         if cast(int, index) % config.dump_every == 0:
             if file_type == ".jsonl":
