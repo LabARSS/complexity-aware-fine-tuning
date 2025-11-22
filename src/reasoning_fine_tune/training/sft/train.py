@@ -894,7 +894,9 @@ class Trainer:
             if type(self.cfg.eval_test_period) is list:
                 epoch_matches_eval_test_period = (epoch + 1) in self.cfg.eval_test_period
             else:
-                epoch_matches_eval_test_period = (epoch + 1) % self.cfg.eval_test_period == 0
+                epoch_matches_eval_test_period = (
+                    self.cfg.eval_test_period != 0 and (epoch + 1) % self.cfg.eval_test_period == 0
+                )
             if not skip_eval_test and (is_last_epoch or epoch_matches_eval_test_period):
                 # balanced test (from path)
                 if self.cfg.test_balanced_path.endswith((".jsonl", ".json")):
