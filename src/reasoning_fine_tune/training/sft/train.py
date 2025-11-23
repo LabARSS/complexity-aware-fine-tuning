@@ -161,12 +161,18 @@ class Trainer:
                     if answer == "":
                         answer = None
 
-                if self.cfg.use_cot and "reasoning" in row.index and pd.notna(row["reasoning"]):
-                    reasoning = str(row["reasoning"]).strip()
+                if self.cfg.use_cot:
+                    cot_text = None
+                    if "distill_response" in row.index and pd.notna(row["distill_response"]):
+                        cot_text = str(row["distill_response"]).strip()
+                    elif "reasoning" in row.index and pd.notna(row["reasoning"]):
+                        cot_text = str(row["reasoning"]).strip()
+
                     if answer:
-                        prompt += f"\n {reasoning} \n {ANSWER_MARKER[0]}{answer}{ANSWER_MARKER[1]}{t['assistant_end']}"
+                        prompt += f"\n {cot_text} \n {ANSWER_MARKER[0]}{answer}{ANSWER_MARKER[1]}{t['assistant_end']}"
                     else:
-                        prompt += f"\n {reasoning}{t['assistant_end']}"
+                        prompt += f"\n {cot_text}{t['assistant_end']}"
+                        
                 elif answer:
                     prompt += f"\n {ANSWER_MARKER[0]}{answer}{ANSWER_MARKER[1]}{t['assistant_end']}"
                 else:
@@ -789,6 +795,20 @@ class Trainer:
         train_ds, val_ds, test_ds, train_df, val_df, test_df = self.prepare_datasets(
             self.cfg.train_path, self.cfg.valid_path, self.cfg.test_path
         )
+
+        if self.cfg.use_cot:
+            cot_column = None
+            if "distill_response" in train_df.columns and train_df["distill_response"].notna().any():
+                cot_column = "distill_response"
+            elif "reasoning" in train_df.columns and train_df["reasoning"].notna().any():
+                cot_column = "reasoning"
+
+            if cot_column is not None:
+                logging.info(f"CoT from column: '{cot_column}' (train_df)")
+            else:
+                logging.warning(
+                    "empty CoT column: no 'distill_response' or 'reasoning' column with data found in train_df"
+                )
 
         data_collator = DataCollatorForLanguageModeling(tokenizer=self.tokenizer, mlm=False, pad_to_multiple_of=8)
         train_loader = DataLoader(
