@@ -165,8 +165,10 @@ class Trainer:
                     cot_text = None
                     if "distill_response" in row.index and pd.notna(row["distill_response"]):
                         cot_text = str(row["distill_response"]).strip()
+                        prompt += f"\n {cot_text}{t['assistant_end']}"
                     elif "reasoning" in row.index and pd.notna(row["reasoning"]):
                         cot_text = str(row["reasoning"]).strip()
+                        prompt += f"\n {cot_text} \n {ANSWER_MARKER[0]}{answer}{ANSWER_MARKER[1]}{t['assistant_end']}"
 
                     if answer:
                         prompt += f"\n {cot_text} \n {ANSWER_MARKER[0]}{answer}{ANSWER_MARKER[1]}{t['assistant_end']}"
