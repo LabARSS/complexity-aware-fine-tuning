@@ -66,8 +66,7 @@ class Trainer:
             logging.info("CUDA not available, switching device_map to None for safe load.")
             device_map = None
 
-        # fallback dtype if bfloat16 is not supported on this environment
-        torch_dtype = getattr(torch, "bfloat16", None) or torch.float32
+        torch_dtype = torch.bfloat32
 
         try:
             self.model = AutoModelForCausalLM.from_pretrained(
@@ -647,6 +646,7 @@ class Trainer:
                         max_new_tokens=self.cfg.max_new_tokens,
                         num_return_sequences=1,
                         pad_token_id=tokenizer.eos_token_id,
+                        eos_token_id=tokenizer.eos_token_id
                     )
                 except Exception as e:
                     # здесь различаем старую и новую семантику
@@ -865,7 +865,7 @@ class Trainer:
                     logging.info(f"Training batch input ids shape: {batch['input_ids'].shape}")
                     logging.info(f"\nTraining Sample:\n{sample}")
 
-                with autocast(device_type="cuda" if torch.cuda.is_available() else "cpu", dtype=torch.float16):
+                with autocast(device_type="cuda" if torch.cuda.is_available() else "cpu", dtype=torch.bfloat16):
                     outputs = self.model(**batch)
                     loss = outputs.loss / self.cfg.gradient_accumulation
                     accuracy = calculate_accuracy(outputs.logits, batch["input_ids"], self.tokenizer)
