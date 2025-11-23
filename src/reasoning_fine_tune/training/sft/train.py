@@ -66,8 +66,7 @@ class Trainer:
             logging.info("CUDA not available, switching device_map to None for safe load.")
             device_map = None
 
-        torch_dtype = torch.bfloat32
-
+        torch_dtype = torch.bfloat16
         try:
             self.model = AutoModelForCausalLM.from_pretrained(
                 self.cfg.base_model,
