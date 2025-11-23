@@ -13,9 +13,9 @@ if __name__ == "__main__":
     cfg.run_eval_on_start = False
     cfg.max_input_length = 16384
     cfg.max_new_tokens = 16384
-    cfg.batch_size = 16
-    cfg.eval_batch_size = 16
-    cfg.gradient_accumulation = 16
+    cfg.batch_size = 2
+    cfg.eval_batch_size = 4
+    cfg.gradient_accumulation = 128
 
     cfg.save_dir = str(Path(__file__).parent.joinpath("../../../../artifacts/pipeline_gsm8k/pipeline/phi4"))
     cfg.train_path = str(Path(__file__).parent.joinpath("../../../../data/data_splits/entropy/phi/gsm8k_hard.jsonl"))
