@@ -3,5 +3,4 @@
 *.pyc
 __pycache__
 .env
-*.parquet
 artifacts
