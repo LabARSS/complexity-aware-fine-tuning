@@ -14,10 +14,27 @@ from transformers import (
     AutoModelForCausalLM,
     AutoTokenizer,
     DataCollatorForLanguageModeling,
+    StoppingCriteria,
+    StoppingCriteriaList,
 )
 
 from reasoning_fine_tune.training.sft.config import TrainConfig
 from reasoning_fine_tune.training.sft.utils import ANSWER_MARKER, ANSWER_PATTERN, calculate_accuracy, cot_sys_prompt
+
+class StopOnFullAnswer(StoppingCriteria):
+    def __init__(self, tokenizer, max_len_to_check: int = 48):
+        super().__init__()
+        self.tokenizer = tokenizer
+        self.max_len_to_check = max_len_to_check
+
+    def __call__(self, input_ids: torch.LongTensor, scores: torch.FloatTensor, **kwargs) -> bool:
+        for seq in input_ids:
+            tail = seq[-self.max_len_to_check:]
+            text = self.tokenizer.decode(tail, skip_special_tokens=False)
+            # как только в хвосте появился [[ ... ]]
+            if "[[" in text and "]]" in text:
+                return True
+        return False
 
 
 class Trainer:
@@ -639,13 +656,15 @@ class Trainer:
 
             with torch.no_grad():
                 try:
+                    stopping_criteria = StoppingCriteriaList([StopOnFullAnswer(tokenizer,max_len_to_check=48)])
                     outputs = model.generate(
                         inputs.input_ids,
                         attention_mask=inputs.attention_mask if hasattr(inputs, "attention_mask") else None,
                         max_new_tokens=self.cfg.max_new_tokens,
                         num_return_sequences=1,
                         pad_token_id=tokenizer.eos_token_id,
-                        eos_token_id=tokenizer.eos_token_id
+                        eos_token_id=tokenizer.eos_token_id,
+                        stopping_criteria = stopping_criteria
                     )
                 except Exception as e:
                     # здесь различаем старую и новую семантику
