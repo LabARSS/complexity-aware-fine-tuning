@@ -5,10 +5,10 @@ from reasoning_fine_tune.training.sft.train import Trainer
 
 if __name__ == "__main__":
     cfg = TrainConfig.preset("microsoft/Phi-4-mini-instruct")
-    cfg.epochs = 20
+    cfg.epochs = 10
     cfg.debug = False
     cfg.use_cot = True
-    cfg.eval_validation_period = 1
+    cfg.eval_validation_period = 2
     cfg.eval_test_period = 0
     cfg.run_eval_on_start = False
     cfg.max_input_length = 16384
