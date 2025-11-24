@@ -1,5 +1,4 @@
 import ast
-import json
 import logging
 import math
 import os
@@ -34,8 +33,13 @@ def letters_for(n: int):
 
 
 def parse_options(s):
-    lst = ast.literal_eval(s)
-    return list(map(str, lst))
+    if isinstance(s, list):
+        return list(map(str, s))
+    try:
+        lst = ast.literal_eval(str(s))
+        return list(map(str, lst))
+    except:
+        return []
 
 
 def norm_letter_dyn(x, letters):
@@ -207,65 +211,48 @@ def _branch_c(q, choices, gold, model, max_tokens, subject, prev_answer, prev_re
 
 
 # ------------ helpers for branch C ------------
-def _load_incorrect_from_branch_a(a_jsonl_path: str, expected_model: str | None) -> dict[int, dict]:
-    bad: dict[int, dict] = {}
-    with open(a_jsonl_path, "r", encoding="utf-8") as f:
-        for line in f:
-            try:
-                rec = json.loads(line)
-            except Exception:
-                continue
-            inp = rec.get("input") or {}
-            out = rec.get("output") or {}
-            if "error" in out:
-                continue
-            if expected_model is not None and (inp.get("model") != expected_model):
-                continue
-            row_id = inp.get("row_id")
-            if row_id is None:
-                continue
-            gold = (inp.get("gold") or "").strip().upper()
-            ans = (out.get("answer") or "").strip().upper()
-            is_correct = out.get("is_correct")
-            if is_correct is None:
-                is_correct = ans == gold
-            if not is_correct:
-                bad[int(row_id)] = {
-                    "preivous_answer": ans,
-                    "thinking": out.get("thinking") or "",
-                }
+def _load_incorrect_from_branch_a(a_parquet_path: str, expected_model: str | None) -> dict[int, dict]:
+    if not a_parquet_path or not os.path.exists(a_parquet_path):
+        return {}
+    
+    try:
+        df = pd.read_parquet(a_parquet_path)
+    except Exception:
+        return {}
+
+    bad = {}
+    for _, row in df.iterrows():
+        inp, out = row["input"], row["output"]
+        if "error" in out:
+            continue
+        if expected_model and inp.get("model") != expected_model:
+            continue
+            
+        # Check correctness (prefer explicit flag, fallback to string comparison)
+        is_correct = out.get("is_correct")
+        if is_correct is None:
+            is_correct = (out.get("answer") or "").strip().upper() == (inp.get("gold") or "").strip().upper()
+            
+        if not is_correct:
+            bad[int(inp["question_id"])] = {
+                "model_answer": out.get("answer"),
+                "thinking": out.get("thinking", ""),
+            }
     return bad
 
 
-def _load_and_clean_existing(out_jsonl: str) -> set[int]:
-    if not os.path.exists(out_jsonl):
+def _load_existing_ids(out_parquet: str) -> set[int]:
+    if not os.path.exists(out_parquet):
         return set()
-
-    valid_ids = set()
-    valid_lines = []
-
-    with open(out_jsonl, "r", encoding="utf-8") as f:
-        for line in f:
-            line = line.strip()
-            if not line:
-                continue
-            try:
-                rec = json.loads(line)
-                # Check if output has error
-                if "error" not in rec.get("output", {}):
-                    rid = rec.get("input", {}).get("question_id")
-                    if rid is not None:
-                        valid_ids.add(int(rid))
-                    valid_lines.append(line)
-            except Exception:
-                pass
-
-    # Rewrite file with only valid lines
-    with open(out_jsonl, "w", encoding="utf-8") as f:
-        for line in valid_lines:
-            f.write(line + "\n")
-
-    return valid_ids
+    try:
+        df = pd.read_parquet(out_parquet, columns=["input", "output"])
+        return {
+            int(row["input"]["question_id"])
+            for _, row in df.iterrows()
+            if "error" not in row["output"]
+        }
+    except Exception:
+        return set()
 
 
 # ------------ dataset -------------
@@ -316,52 +303,58 @@ def _run_job(job):
 
 def synth_on_dataset(
     in_filename: str,
-    out_jsonl: str,
+    out_filename: str,
     model: str,
     max_tokens: int,
     dump_every: int,
     limit: int | None,
     branch: str,
     chunk_size: int,
-    a_jsonl_path: str | None,
-    temperature: float = 0,  # [warning]: temperature for all branches
+    a_file_path: str | None,
+    temperature: float = 0,
 ):
     assert branch in {"A", "B", "C"}
     if branch == "C":
-        assert a_jsonl_path and os.path.exists(a_jsonl_path), (
-            "Branch C requires a valid path to branch-A results (a_jsonl_path)."
+        assert a_file_path and os.path.exists(a_file_path), (
+            "Branch C requires a valid path to branch-A parquet results (a_file_path)."
         )
 
+    # Read input dataset (TSV/CSV)
     df = pd.read_csv(in_filename, sep="\t", dtype=str, keep_default_na=False)
     total_rows = len(df) if limit is None else min(len(df), int(limit))
     total_chunks = max(1, math.ceil(total_rows / max(1, chunk_size)))
 
-    os.makedirs(os.path.dirname(out_jsonl) or ".", exist_ok=True)
+    os.makedirs(os.path.dirname(out_filename) or ".", exist_ok=True)
 
-    existing_ids = _load_and_clean_existing(out_jsonl)
-    logging.warning(f"Found {len(existing_ids)} valid records in {out_jsonl}. Errors removed.")
+    # Load existing progress
+    existing_ids = _load_existing_ids(out_filename)
+    logging.warning(f"Found {len(existing_ids)} valid records in {out_filename}.")
 
-    # pre-load A-incorrects for branch C
+    # Pre-load A-incorrects for branch C
     a_incorrect_map: dict[int, dict] = {}
     ids_for_c: set[int] = set()
     if branch == "C":
-        a_incorrect_map = _load_incorrect_from_branch_a(a_jsonl_path, expected_model=model)
+        a_incorrect_map = _load_incorrect_from_branch_a(a_file_path, expected_model=model)
         ids_for_c = set(a_incorrect_map.keys())
+        logging.info(f"Loaded {len(ids_for_c)} incorrect answers from Branch A for processing.")
 
     written = 0
     stop = False
+    buffer = []
 
-    with open(out_jsonl, "a", encoding="utf-8") as f, futures.ThreadPoolExecutor(max_workers=chunk_size) as pool:
+    with futures.ThreadPoolExecutor(max_workers=chunk_size) as pool:
         for chunk_idx, chunk in tqdm(enumerate(chunker(df, chunk_size)), total=total_chunks, desc=f"Synth {branch}"):
             if stop:
                 break
 
             args_list = []
             for index, row in chunk.iterrows():
-                if int(row["question_id"]) in existing_ids:
+                # Check if already processed
+                qid = row.get("question_id")
+                if qid and int(qid) in existing_ids:
                     continue
 
-                if limit is not None and written >= limit:
+                if limit is not None and (len(existing_ids) + written) >= limit:
                     stop = True
                     break
 
@@ -389,10 +382,17 @@ def synth_on_dataset(
                 prev_ans = None
                 prev_thinking = None
                 if branch == "C":
-                    if index not in ids_for_c:
+                    # Only process rows where Branch A failed
+                    # Use question_id for lookup, NOT the dataframe index
+                    try:
+                        qid_int = int(question_id)
+                    except (ValueError, TypeError):
                         continue
-                    prev_ans = a_incorrect_map[index].get("model_answer")
-                    prev_thinking = a_incorrect_map[index].get("thinking")
+
+                    if qid_int not in ids_for_c:
+                        continue
+                    prev_ans = a_incorrect_map[qid_int].get("model_answer")
+                    prev_thinking = a_incorrect_map[qid_int].get("thinking")
 
                 args_list.append(
                     (
@@ -417,10 +417,36 @@ def synth_on_dataset(
             results = list(pool.map(_run_job, args_list))
 
             for row_id, record_in, record_out in results:
-                f.write(json.dumps({"input": record_in, "output": record_out}, ensure_ascii=False) + "\n")
+                buffer.append({"input": record_in, "output": record_out})
                 written += 1
-                if dump_every > 0 and (written % dump_every == 0):
-                    f.flush()
+            
+            # Dump to parquet periodically
+            if dump_every > 0 and len(buffer) >= dump_every:
+                try:
+                    new_df = pd.DataFrame(buffer)
+                    if os.path.exists(out_filename):
+                        existing_df = pd.read_parquet(out_filename)
+                        combined_df = pd.concat([existing_df, new_df], ignore_index=True)
+                    else:
+                        combined_df = new_df
+                    
+                    combined_df.to_parquet(out_filename, index=False)
+                    buffer = [] # Clear buffer after successful write
+                except Exception as e:
+                    logging.error(f"Failed to write parquet batch: {e}")
 
-    print(f"Saved to {out_jsonl}. Rows considered: {len(df)}; written: {written}; branch={branch}; model={model}.")
-    return out_jsonl
+    # Final flush
+    if buffer:
+        try:
+            new_df = pd.DataFrame(buffer)
+            if os.path.exists(out_filename):
+                existing_df = pd.read_parquet(out_filename)
+                combined_df = pd.concat([existing_df, new_df], ignore_index=True)
+            else:
+                combined_df = new_df
+            combined_df.to_parquet(out_filename, index=False)
+        except Exception as e:
+            logging.error(f"Failed to write final parquet batch: {e}")
+
+    print(f"Saved to {out_filename}. Rows considered: {len(df)}; written: {written}; branch={branch}; model={model}.")
+    return out_filename
