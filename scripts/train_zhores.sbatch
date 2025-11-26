@@ -12,7 +12,7 @@
 singularity exec --nv \
   --bind $PWD:/src \
   uv.sif \
-  bash -c "cd /src && uv run torchrun \
+  bash -c "cd /src && uv run python -m torch.distributed.run \
     --nproc_per_node=4 \
     --standalone \
     ${EXPERIMENT_RELATIVE_PATH}"
