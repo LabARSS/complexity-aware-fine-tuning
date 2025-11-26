@@ -1,5 +1,4 @@
 #!/bin/bash
-#SBATCH --job-name=${JOB_NAME}
 #SBATCH --partition=ais-gpu
 #SBATCH --gpus=4
 #SBATCH --nodes=1
