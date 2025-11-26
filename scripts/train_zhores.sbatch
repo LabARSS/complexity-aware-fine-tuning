@@ -11,7 +11,7 @@
 #SBATCH --error=logs/train_%j.err
 
 singularity exec --nv \
-  --bind $CWD:/src \
+  --bind $PWD:/src \
   uv.sif \
   bash -c "cd /src && uv run torchrun \
     --nproc_per_node=4 \
