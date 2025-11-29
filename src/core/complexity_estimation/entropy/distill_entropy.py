@@ -23,15 +23,16 @@ def call_remote_llm(args):
         ]
 
         completion = openrouter.chat.completions.create(
-            model=model, messages=messages, max_tokens=max_tokens, logprobs=True, top_logprobs=20
+            model=model, messages=messages, max_tokens=max_tokens, logprobs=True, top_logprobs=20, extra_body={"provider": {"order": ["gmicloud/fp8"]}}
         )
+
         return (
             index,
             completion.choices[0].message.content,
-            completion.choices[0].message.logprobs.content.logprob,
+            completion.choices[0].logprobs.content[0].logprob,
             [
                 {"token": logprob.token, "logprob": logprob.logprob}
-                for logprob in completion.choices[0].message.logprobs.content.top_logprobs
+                for logprob in completion.choices[0].logprobs.content[0].top_logprobs
             ],
         )
     except:
@@ -46,7 +47,7 @@ def distill_logprobs(
     get_question_from_row,
     get_options_from_row,
     check_answer_correct,
-    dump_every=100,
+    dump_every=10,
     max_tokens=1,
     get_sys_prompt=single_token_sys_prompt,
     get_user_prompt=single_token_answer_prompt,
@@ -117,7 +118,7 @@ def distill_logprobs(
 
                 if index < 5:
                     print(
-                        f"response: {response}\nextracted_answer: {df.at[index, field_ans]}\ncorrect:{df.at[index, field_ans_correct]}\nanswer probability: {df.at[index, field_ans_prob]}\nlogprobs:{df.at[index, field_logprobs]}\n\n"
+                        f"index: {index}\nresponse: {response}\nextracted_answer: {df.at[index, field_ans]}\ncorrect:{df.at[index, field_ans_correct]}\nanswer probability: {df.at[index, field_ans_prob]}\nlogprobs:{df.at[index, field_logprobs]}\n\n"
                     )
 
                 if chunk_idx % dump_every == 0:

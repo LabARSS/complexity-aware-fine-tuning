@@ -9,7 +9,7 @@ distill_logprobs(
     out_filename=Path(__file__)
     .parent.joinpath("../../../data/out/single_token_entropy/mmlu_deepseekv3.parquet")
     .resolve(),
-    model="deepseek/deepseek-v3.1-terminus",
+    model="deepseek/deepseek-chat-v3.1",
     get_subject_from_row=lambda row: row["base_cluster"],
     get_question_from_row=lambda row: row["question"],
     get_options_from_row=lambda row: ast.literal_eval(row["options"]),
