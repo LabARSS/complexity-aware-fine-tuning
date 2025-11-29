@@ -72,7 +72,7 @@ def distill_logprobs(
     if field_ans_correct not in df.columns:
         df[field_ans_correct] = False
     if field_logprobs not in df.columns:
-        df[field_logprobs] = []
+        df[field_logprobs] = pd.Series([[]] * len(df), dtype=object)
     if field_ans not in df.columns:
         df[field_ans] = ""
     if field_entropy not in df.columns:
