@@ -15,7 +15,7 @@ chunk_size = 30
 
 def call_remote_llm(args):
     try:
-        sys_prompt, user_prompt, index, model, max_tokens = args
+        sys_prompt, user_prompt, index, model, max_tokens, provider = args
 
         messages = [
             {"role": "system", "content": sys_prompt},
@@ -23,7 +23,7 @@ def call_remote_llm(args):
         ]
 
         completion = openrouter.chat.completions.create(
-            model=model, messages=messages, max_tokens=max_tokens, logprobs=True, top_logprobs=20, extra_body={"provider": {"order": ["gmicloud/fp8"]}}
+            model=model, messages=messages, max_tokens=max_tokens, logprobs=True, top_logprobs=20, extra_body={"provider": {"order": [provider]}}
         )
 
         return (
@@ -43,6 +43,7 @@ def distill_logprobs(
     in_filename,
     out_filename,
     model,
+    provider,
     get_subject_from_row,
     get_question_from_row,
     get_options_from_row,
@@ -81,17 +82,19 @@ def distill_logprobs(
     if field_ans_prob not in df.columns:
         df[field_ans_prob] = 0.0
 
+    first_chunk = True
+
     with futures.ThreadPoolExecutor(max_workers=chunk_size) as pool:
         for chunk_idx, chunk in tqdm(enumerate(chunker(df, chunk_size)), total=int(df.shape[0] / chunk_size)):
             args_list = []
 
             for index, row in chunk.iterrows():
-                if df.at[index, field_ans] != "":
+                if df.at[index, field_ans_correct] == True:
                     continue
 
                 sys_prompt = get_sys_prompt(get_subject_from_row(row))
                 user_prompt = get_user_prompt(get_question_from_row(row), get_options_from_row(row))
-                args_list.append((sys_prompt, user_prompt, index, model, max_tokens))
+                args_list.append((sys_prompt, user_prompt, index, model, max_tokens, provider))
 
             results = list(pool.map(call_remote_llm, args_list))
 
@@ -116,10 +119,11 @@ def distill_logprobs(
                 else:
                     invalid_answers += 1
 
-                if index < 5:
+                if first_chunk:
                     print(
                         f"index: {index}\nresponse: {response}\nextracted_answer: {df.at[index, field_ans]}\ncorrect:{df.at[index, field_ans_correct]}\nanswer probability: {df.at[index, field_ans_prob]}\nlogprobs:{df.at[index, field_logprobs]}\n\n"
                     )
+                    first_chunk = False
 
                 if chunk_idx % dump_every == 0:
                     df.to_parquet(out_filename, index=False)
