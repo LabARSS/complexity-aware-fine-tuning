@@ -21,7 +21,9 @@ def call_remote_llm(args):
             {"role": "user", "content": user_prompt},
         ]
 
-        completion = openrouter.chat.completions.create(model=model, messages=messages, max_tokens=max_tokens)
+        completion = openrouter.chat.completions.create(
+            model=model, messages=messages, max_tokens=max_tokens, logprobs=True
+        )
         return index, completion.choices[0].message.content
     except:
         return None
