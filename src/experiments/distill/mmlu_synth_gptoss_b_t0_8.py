@@ -8,7 +8,7 @@ def main():
 
     synth_on_dataset(
         in_filename=Path(__file__).parent.joinpath("../../../data/source/mmlu_pro_stem_shuffled.tsv").resolve(),
-        out_filename=Path(__file__).parent.joinpath("../../../data/out/distillation/temperature_changes/mmlu_synth_gptoss_b_t0_8.parquet").resolve(),
+        out_filename=Path(__file__).parent.joinpath("../../../data/out/distillation/mmlu_synth_gptoss_b_t0_8.parquet").resolve(),
         model="openai/gpt-oss-120b",
         max_tokens=16384,
         dump_every=1000,
