@@ -1,3 +1,4 @@
+import csv
 import os
 from typing import Any, Optional, Union
 
@@ -93,7 +94,12 @@ class CoTEvalTrainer(Seq2SeqTrainer):
 
             new_incorrect_answers_df = pd.DataFrame(incorrect_answers)
             new_incorrect_answers_df.to_csv(
-                self.invalid_answers_save_path, sep="\t", mode="a", header=not self.file_initialized, index=False
+                self.invalid_answers_save_path,
+                sep="\t",
+                mode="a",
+                header=not self.file_initialized,
+                index=False,
+                quoting=csv.QUOTE_MINIMAL,
             )
             self.file_initialized = True
 
