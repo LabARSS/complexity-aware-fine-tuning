@@ -15,24 +15,27 @@ from transformers import (
     AutoTokenizer,
     DataCollatorForLanguageModeling,
     StoppingCriteria,
-    StoppingCriteriaList,
 )
 
+import reasoning_fine_tune.prompts.gsm8k_cot_answer as gsm8k_prompts
+import reasoning_fine_tune.prompts.medmcqa_cot_answer as medmcqa_cot_prompts
+import reasoning_fine_tune.prompts.medmcqa_single_token_answer as medmcqa_single_prompts
 from reasoning_fine_tune.training.sft.config import TrainConfig
 from reasoning_fine_tune.training.sft.utils import ANSWER_MARKER, ANSWER_PATTERN, calculate_accuracy, cot_sys_prompt
 
+
 class StopOnFullAnswer(StoppingCriteria):
-    def __init__(self, tokenizer, max_len_to_check: int = 48):
+    def __init__(self, tokenizer, max_len_to_check: int = 8):
         super().__init__()
         self.tokenizer = tokenizer
         self.max_len_to_check = max_len_to_check
 
     def __call__(self, input_ids: torch.LongTensor, scores: torch.FloatTensor, **kwargs) -> bool:
         for seq in input_ids:
-            tail = seq[-self.max_len_to_check:]
+            tail = seq[-self.max_len_to_check :]
             text = self.tokenizer.decode(tail, skip_special_tokens=False)
             # как только в хвосте появился [[ ... ]]
-            if "[[" in text and "]]" in text:
+            if text.endswith("]]") and "[[" in text:
                 return True
         return False
 
@@ -134,66 +137,38 @@ class Trainer:
             self.tokenizer = AutoTokenizer.from_pretrained(self.cfg.base_model, use_fast=True)
             if getattr(self.tokenizer, "pad_token", None) is None:
                 self.tokenizer.pad_token = self.tokenizer.eos_token
+                self.tokenizer.pad_token_id = self.tokenizer.eos_token_id
             self.tokenizer.padding_side = "left"
             print("Tokenizer loaded.", flush=True)
             logging.info("Tokenizer loaded")
 
     # prompt formatting
-    def format_prompt_qa(self, row: pd.Series, include_answer: bool = True, new_format: bool = True) -> str:
-        if new_format:
+    def format_prompt_qa(self, row: pd.Series, include_answer: bool = True) -> str:
+        if self.cfg.dataset == "gsm8k":
             try:
-                if "question" not in row.index:
-                    return None
-
-                question = str(row["question"]).strip()
-                if not question:
-                    return None
-
-                sys_msg = cot_sys_prompt(self.cfg.use_cot)
+                sys_msg = (
+                    gsm8k_prompts.cot_sys_prompt_from_row(row)
+                    if self.cfg.use_cot
+                    else gsm8k_prompts.single_token_sys_prompt_from_row(row)
+                )
                 t = self.cfg.prompt_tokens
 
-                # system + user часть
-                prompt = (
-                    f"{t['system_start']}\n {sys_msg}{t['system_end']} \n{t['user_start']}\n Question: {question} \n"
-                )
+                user_msg = gsm8k_prompts.cot_answer_prompt_from_row(row)
 
-                if self.cfg.use_cot:
-                    prompt += "Please analyze step by step and provide the answer."
-                else:
-                    prompt += (
-                        "Analyze question and answer with only one number in "
-                        f"{ANSWER_MARKER[0]}number{ANSWER_MARKER[1]} format."
-                    )
+                # system + user часть
+                prompt = f"{t['system_start']}\n {sys_msg}{t['system_end']} \n{t['user_start']}\n {user_msg} \n"
 
                 prompt += t["user_end"] + "\n" + t["assistant_start"]
 
                 if not include_answer:
                     return prompt
 
-                answer = None
-                if "answer" in row.index and pd.notna(row["answer"]):
-                    answer = str(row["answer"]).strip()
-                    if answer == "":
-                        answer = None
-
                 if self.cfg.use_cot:
-                    cot_text = None
-                    if "distill_response" in row.index and pd.notna(row["distill_response"]):
-                        cot_text = str(row["distill_response"]).strip()
-                        prompt += f"\n {cot_text}{t['assistant_end']}"
-                    elif "reasoning" in row.index and pd.notna(row["reasoning"]):
-                        cot_text = str(row["reasoning"]).strip()
-                        prompt += f"\n {cot_text} \n {ANSWER_MARKER[0]}{answer}{ANSWER_MARKER[1]}{t['assistant_end']}"
-
-                    if answer:
-                        prompt += f"\n {cot_text} \n {ANSWER_MARKER[0]}{answer}{ANSWER_MARKER[1]}{t['assistant_end']}"
-                    else:
-                        prompt += f"\n {cot_text}{t['assistant_end']}"
-                        
-                elif answer:
-                    prompt += f"\n {ANSWER_MARKER[0]}{answer}{ANSWER_MARKER[1]}{t['assistant_end']}"
+                    cot_text = str(row["distill_response"]).strip()
+                    prompt += f"{cot_text}{t['assistant_end']}"
                 else:
-                    prompt += t["assistant_end"]
+                    answer = str(row["answer"]).strip()
+                    prompt += f"{ANSWER_MARKER[0]}{answer}{ANSWER_MARKER[1]}{t['assistant_end']}"
 
                 return prompt
 
@@ -201,7 +176,43 @@ class Trainer:
                 logging.debug(f"Failed to format prompt for row: {e}")
                 return None
 
-        else:
+        if self.cfg.dataset == "medmcqa":
+            try:
+                sys_msg = (
+                    medmcqa_cot_prompts.cot_sys_prompt_from_row(row)
+                    if self.cfg.use_cot
+                    else medmcqa_single_prompts.single_token_sys_prompt_from_row(row)
+                )
+                t = self.cfg.prompt_tokens
+
+                user_msg = (
+                    medmcqa_cot_prompts.cot_answer_prompt_from_row(row)
+                    if self.cfg.use_cot
+                    else medmcqa_single_prompts.single_token_answer_prompt_from_row(row)
+                )
+
+                # system + user часть
+                prompt = f"{t['system_start']}\n {sys_msg}{t['system_end']} \n{t['user_start']}\n {user_msg} \n"
+
+                prompt += t["user_end"] + "\n" + t["assistant_start"]
+
+                if not include_answer:
+                    return prompt
+
+                if self.cfg.use_cot:
+                    cot_text = str(row["distill_response"]).strip()
+                    prompt += f"{cot_text}{t['assistant_end']}"
+                else:
+                    answer = str(row["answer"]).strip()
+                    prompt += f"{answer}{t['assistant_end']}"
+
+                return prompt
+
+            except Exception as e:
+                logging.debug(f"Failed to format prompt for row: {e}")
+                return None
+
+        if self.cfg.dataset == "mmlu":
             # old code for tsv
             try:
                 options = literal_eval(row["options"])
@@ -246,9 +257,7 @@ class Trainer:
         torch.manual_seed(self.cfg.seed)
 
         def load_and_filter_df(
-            path: str | list[str],
-            require_distill: bool = False,
-            sample_size: int | None = None,
+            path: str | list[str], require_distill: bool = False, sample_size: int | None = None, include_answer=True
         ):
             def _load_one(p: str) -> pd.DataFrame:
                 logging.info(f"Loading dataset: {p}")
@@ -269,12 +278,9 @@ class Trainer:
             total_rows = len(df)
 
             if require_distill:
-                if "distill_response" in df.columns:
-                    df = df[df["distill_response"].notna()]
-                elif "reasoning" in df.columns:
-                    df = df[df["reasoning"].notna()]
+                df = df[df["distill_response"].notna()]
 
-            formatted = df.apply(lambda r: self.format_prompt_qa(r, include_answer=True), axis=1)
+            formatted = df.apply(lambda r: self.format_prompt_qa(r, include_answer=include_answer), axis=1)
             valid_mask = formatted.notnull()
 
             df = df[valid_mask].reset_index(drop=True)
@@ -298,19 +304,13 @@ class Trainer:
         test_sample_size = getattr(self.cfg, "test_sample_size", None)
 
         train_df, train_formatted = load_and_filter_df(
-            train_file,
-            require_distill=self.cfg.use_cot,
-            sample_size=train_sample_size,
+            train_file, require_distill=self.cfg.use_cot, sample_size=train_sample_size, include_answer=True
         )
         val_df, val_formatted = load_and_filter_df(
-            val_file,
-            require_distill=self.cfg.use_cot,
-            sample_size=val_sample_size,
+            val_file, require_distill=False, sample_size=val_sample_size, include_answer=False
         )
         test_df, test_formatted = load_and_filter_df(
-            test_file,
-            require_distill=self.cfg.use_cot,
-            sample_size=test_sample_size,
+            test_file, require_distill=False, sample_size=test_sample_size, include_answer=False
         )
 
         # top-level, module-level function (pickleable)
@@ -326,7 +326,7 @@ class Trainer:
                 max_length=max_length,
                 padding=False,
                 return_attention_mask=True,
-                add_special_tokens=False,
+                add_special_tokens=True,
             )
 
         def create_dataset(formatted_series, _orig_df):
@@ -354,9 +354,9 @@ class Trainer:
         tokenizer,
         epoch: int,
         desc: str = "Validating",
-        data_format: str = "jsonl",
     ) -> float:
         model.eval()
+        model.gradient_checkpointing_disable()
         total_correct = 0
         total_errors = 0
         processed = 0
@@ -399,7 +399,7 @@ class Trainer:
             for r in rows:
                 idx = r.name
 
-                if data_format == "mc":
+                if self.cfg.dataset == "mmlu":
                     try:
                         opts = literal_eval(r["options"])
                     except Exception as e:
@@ -435,7 +435,7 @@ class Trainer:
                                 ai_val = None
 
                     try:
-                        prompt = self.format_prompt_qa(r, include_answer=False, new_format=False)
+                        prompt = self.format_prompt_qa(r, include_answer=False)
                     except Exception as e:
                         prompt = None
                         logging.error(f"Failed to format prompt for idx={idx}: {e}")
@@ -450,34 +450,6 @@ class Trainer:
                             )
                         total_errors += 1
                         continue
-
-                    try:
-                        single_tok = tokenizer(
-                            prompt,
-                            truncation=True,
-                            max_length=self.cfg.max_input_length,
-                            padding=False,
-                            return_attention_mask=True,
-                            add_special_tokens=False,
-                        )
-                        input_ids_list = (
-                            single_tok["input_ids"]
-                            if isinstance(single_tok["input_ids"], list)
-                            else single_tok["input_ids"].tolist()
-                        )
-                        attn_mask_list = single_tok.get("attention_mask", None)
-                        try:
-                            decoded_snip = tokenizer.decode(
-                                input_ids_list[:INPUT_ID_SHOW],
-                                skip_special_tokens=True,
-                            )
-                        except Exception:
-                            decoded_snip = ""
-                    except Exception as e:
-                        input_ids_list = []
-                        attn_mask_list = None
-                        decoded_snip = ""
-                        logging.warning(f"Tokenization failed for idx={idx}: {e}")
 
                     if ai_val is None:
                         total_errors += 1
@@ -500,8 +472,6 @@ class Trainer:
                                     "options": opts,
                                     "prompt": prompt,
                                     "prompt_snippet": prompt[:PROMPT_SNIPPET_CHARS],
-                                    "input_ids": input_ids_list[:INPUT_ID_SHOW],
-                                    "decoded_input_snippet": decoded_snip[:DECODED_INPUT_CHARS],
                                 }
                             )
                         continue
@@ -525,8 +495,6 @@ class Trainer:
                                     "options": opts,
                                     "prompt": prompt,
                                     "prompt_snippet": prompt[:PROMPT_SNIPPET_CHARS],
-                                    "input_ids": input_ids_list[:INPUT_ID_SHOW],
-                                    "decoded_input_snippet": decoded_snip[:DECODED_INPUT_CHARS],
                                 }
                             )
                         continue
@@ -546,9 +514,13 @@ class Trainer:
                     )
 
                 # ----- new jsonl format branch -----
-                else:  # data_format == "jsonl"
+                if self.cfg.dataset == "gsm8k":
                     if "question" not in r.index or "answer" not in r.index:
                         total_errors += 1
+                        logging.error(
+                            "Skipping eval row idx=%s: reason=Invalid question or answer",
+                            idx,
+                        )
                         if self.cfg.debug:
                             dbg_write_log(f"[SKIP idx={idx}] missing 'question' or 'answer' column in jsonl row")
                             dbg_write_jsonl(
@@ -561,7 +533,7 @@ class Trainer:
                         continue
 
                     try:
-                        prompt = self.format_prompt_qa(r, include_answer=False, new_format=True)
+                        prompt = self.format_prompt_qa(r, include_answer=False)
                     except Exception as e:
                         logging.error(f"Failed to format prompt (jsonl) idx={idx}: {e}")
                         total_errors += 1
@@ -578,6 +550,10 @@ class Trainer:
 
                     if prompt is None:
                         total_errors += 1
+                        logging.error(
+                            "Skipping eval row idx=%s: reason=Invalid prompt",
+                            idx,
+                        )
                         if self.cfg.debug:
                             dbg_write_log(f"[SKIP idx={idx}] prompt is None (jsonl)")
                         continue
@@ -585,6 +561,10 @@ class Trainer:
                     gold = str(r["answer"]).strip()
                     if gold == "":
                         total_errors += 1
+                        logging.error(
+                            "Skipping eval row idx=%s: reason=Empty answer",
+                            idx,
+                        )
                         if self.cfg.debug:
                             dbg_write_log(f"[SKIP idx={idx}] empty gold answer (jsonl)")
                         continue
@@ -597,8 +577,73 @@ class Trainer:
                             "prompt": prompt,
                             "options": None,
                             "expected": gold,
-                            "raw_answer_index": r.get("answer_index"),
-                            "distill_answer": r.get("distill_answer"),
+                            "question": r.get("question"),
+                        }
+                    )
+
+                if self.cfg.dataset == "medmcqa":
+                    if "question" not in r.index or "answer" not in r.index:
+                        total_errors += 1
+                        logging.error(
+                            "Skipping eval row idx=%s: reason=Missing question or answer",
+                            idx,
+                        )
+                        if self.cfg.debug:
+                            dbg_write_log(f"[SKIP idx={idx}] missing 'question' or 'answer' column in jsonl row")
+                            dbg_write_jsonl(
+                                {
+                                    "idx": idx,
+                                    "reason": "missing_columns",
+                                    "available_columns": list(r.index),
+                                }
+                            )
+                        continue
+
+                    try:
+                        prompt = self.format_prompt_qa(r, include_answer=False)
+                    except Exception as e:
+                        logging.error(f"Failed to format prompt (jsonl) idx={idx}: {e}")
+                        total_errors += 1
+                        if self.cfg.debug:
+                            dbg_write_log(f"[PROMPT FAIL idx={idx}] {e}")
+                            dbg_write_jsonl(
+                                {
+                                    "idx": idx,
+                                    "reason": "format_prompt_failed",
+                                    "error": str(e),
+                                }
+                            )
+                        continue
+
+                    if prompt is None:
+                        total_errors += 1
+                        logging.error(
+                            "Skipping eval row idx=%s: reason=Invalid prompt",
+                            idx,
+                        )
+                        if self.cfg.debug:
+                            dbg_write_log(f"[SKIP idx={idx}] prompt is None (jsonl)")
+                        continue
+
+                    gold = str(r["answer"]).strip()
+                    if gold == "":
+                        total_errors += 1
+                        logging.error(
+                            "Skipping eval row idx=%s: reason=Empty answer",
+                            idx,
+                        )
+                        if self.cfg.debug:
+                            dbg_write_log(f"[SKIP idx={idx}] empty gold answer (jsonl)")
+                        continue
+
+                    prompts.append(prompt)
+                    corrects.append(gold)
+                    row_meta.append(
+                        {
+                            "index": idx,
+                            "prompt": prompt,
+                            "options": None,
+                            "expected": gold,
                             "question": r.get("question"),
                         }
                     )
@@ -630,7 +675,7 @@ class Trainer:
                         try:
                             decoded = tokenizer.decode(
                                 in_ids[:INPUT_ID_SHOW],
-                                skip_special_tokens=True,
+                                skip_special_tokens=False,
                             )
                         except Exception:
                             decoded = ""
@@ -648,7 +693,6 @@ class Trainer:
                                 "attention_mask": attn_ids[:INPUT_ID_SHOW] if attn_ids is not None else None,
                                 "expected": meta["expected"],
                                 "options": meta["options"],
-                                "data_format": data_format,
                             }
                         )
                     except Exception as e:
@@ -656,30 +700,39 @@ class Trainer:
 
             with torch.no_grad():
                 try:
-                    stopping_criteria = StoppingCriteriaList([StopOnFullAnswer(tokenizer,max_len_to_check=48)])
+                    eos_token_ids = []
+                    if hasattr(model, "generation_config") and model.generation_config is not None:
+                        gen_eos = model.generation_config.eos_token_id
+                        if isinstance(gen_eos, list):
+                            eos_token_ids.extend(gen_eos)
+                        elif gen_eos is not None:
+                            eos_token_ids.append(gen_eos)
+                    if tokenizer.eos_token_id is not None and tokenizer.eos_token_id not in eos_token_ids:
+                        eos_token_ids.append(tokenizer.eos_token_id)
+
+                    # stopping_criteria = StoppingCriteriaList([StopOnFullAnswer(tokenizer, max_len_to_check=10)])
                     outputs = model.generate(
                         inputs.input_ids,
                         attention_mask=inputs.attention_mask if hasattr(inputs, "attention_mask") else None,
                         max_new_tokens=self.cfg.max_new_tokens,
                         num_return_sequences=1,
-                        pad_token_id=tokenizer.eos_token_id,
-                        eos_token_id=tokenizer.eos_token_id,
-                        stopping_criteria = stopping_criteria
+                        pad_token_id=tokenizer.pad_token_id,
+                        eos_token_id=eos_token_ids,
+                        use_cache=True,
+                        # stopping_criteria=stopping_criteria,
                     )
                 except Exception as e:
                     # здесь различаем старую и новую семантику
-                    if data_format == "jsonl":
-                        total_errors += len(prompts)
-                    else:  # mc
+                    if self.cfg.dataset == "mmlu":
                         total_errors += 1
+                    else:  # mc
+                        total_errors += len(prompts)
                     logging.error(f"Model.generate failed on batch starting idx {batch_indices[0]}: {e}")
                     if self.cfg.debug:
-                        dbg_write_log(
-                            f"[GEN ERROR] batch_start_idx={batch_indices[0]} error={repr(e)} data_format={data_format}"
-                        )
+                        dbg_write_log(f"[GEN ERROR] batch_start_idx={batch_indices[0]} error={repr(e)}")
                     continue
 
-            responses = tokenizer.batch_decode(outputs, skip_special_tokens=True)
+            responses = tokenizer.batch_decode(outputs, skip_special_tokens=False)
             n = min(len(responses), len(corrects), len(row_meta), outputs.size(0))
 
             if not (len(responses) == len(corrects) == len(row_meta)):
@@ -696,6 +749,8 @@ class Trainer:
 
             for k, (resp, corr, meta) in enumerate(zip(responses[:n], corrects[:n], row_meta[:n])):
                 try:
+                    processed += 1
+
                     matches = ANSWER_PATTERN.findall(resp)
                     gen = matches[-1].strip() if matches else None
 
@@ -709,6 +764,9 @@ class Trainer:
                     except Exception:
                         # if something went wrong — at least use the full resp
                         gen_only_text = resp
+
+                    if self.cfg.dataset == "medmcqa" and not self.cfg.use_cot:
+                        gen = gen_only_text[0]
 
                     if preview_examples_logged < preview_examples_target:
                         prompt_for_log = meta.get("prompt", "")
@@ -727,8 +785,13 @@ class Trainer:
                         )
                         preview_examples_logged += 1
 
-                    if data_format == "jsonl" and gen is None:
+                    if gen is None:
                         total_errors += 1
+                        logging.error(
+                            "Skipping eval row idx=%s: reason=Failed to extract answer from model output: %s",
+                            meta['index'],
+                            gen_only_text,
+                        )
                         if self.cfg.debug:
                             dbg_write_log(f"[PARSE MISS idx={meta['index']}] no answer marker found in generated text")
                             dbg_write_jsonl(
@@ -738,13 +801,11 @@ class Trainer:
                                     "generated_text_snippet": resp[:GENERATED_TEXT_SNIPPET],
                                     "regex_matches": matches,
                                     "expected": meta["expected"],
-                                    "data_format": data_format,
                                 }
                             )
                     else:
                         is_correct = gen == corr
                         total_correct += int(is_correct)
-                        processed += 1
 
                         if self.cfg.debug:
                             try:
@@ -757,7 +818,6 @@ class Trainer:
                             dbg_prompt = meta.get("prompt") or self.format_prompt_qa(
                                 df.loc[meta["index"]],
                                 include_answer=False,
-                                new_format=(data_format == "jsonl"),
                             )
 
                             dbg_obj = {
@@ -771,13 +831,12 @@ class Trainer:
                                 "generated_ids": gen_ids,
                                 "regex_matches": matches,
                                 "is_correct": is_correct,
-                                "data_format": data_format,
                             }
                             dbg_write_jsonl(dbg_obj)
 
                             if not is_correct:
                                 dbg_write_log(
-                                    f"[MISMATCH idx={meta['index']} format={data_format}] "
+                                    f"[MISMATCH idx={meta['index']}] "
                                     f"expected={meta['expected']} regex_matches={matches}"
                                 )
 
@@ -820,8 +879,6 @@ class Trainer:
             cot_column = None
             if "distill_response" in train_df.columns and train_df["distill_response"].notna().any():
                 cot_column = "distill_response"
-            elif "reasoning" in train_df.columns and train_df["reasoning"].notna().any():
-                cot_column = "reasoning"
 
             if cot_column is not None:
                 logging.info(f"CoT from column: '{cot_column}' (train_df)")
@@ -864,12 +921,12 @@ class Trainer:
                 self.tokenizer,
                 0,
                 desc="test_balanced",
-                data_format="jsonl",  # для gsm8k-jsonl
             )
             logging.info(f"TEST BALANCED QA Accuracy: {test_acc * 100:.2f}%")
 
         for epoch in range(self.cfg.epochs):
             self.model.train()
+            self.model.gradient_checkpointing_enable()
             total_train_loss = 0.0
             total_train_acc = 0.0
             total_samples = 0
@@ -882,6 +939,7 @@ class Trainer:
                     sample = self.tokenizer.decode(batch["input_ids"][0], skip_special_tokens=True)
                     logging.info(f"Training batch input ids shape: {batch['input_ids'].shape}")
                     logging.info(f"\nTraining Sample:\n{sample}")
+                    logging.info("-" * 50)
 
                 with autocast(device_type="cuda" if torch.cuda.is_available() else "cpu", dtype=torch.bfloat16):
                     outputs = self.model(**batch)
@@ -950,7 +1008,6 @@ class Trainer:
                     self.tokenizer,
                     epoch + 1,
                     desc="test_balanced",
-                    data_format="jsonl",
                 )
                 logging.info(f"TEST BALANCED QA Accuracy: {test_acc * 100:.2f}%")
 

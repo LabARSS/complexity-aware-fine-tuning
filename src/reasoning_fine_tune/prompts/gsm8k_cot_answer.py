@@ -9,7 +9,7 @@ def cot_sys_prompt_from_row(row: pd.Series):
 
 
 def single_token_sys_prompt_from_row(row: pd.Series):
-    sys_msg = f"The following are grade school math word problems. Write down only the correct answer and nothing else by strictly following this format: {answer_marker[0]}correct_answer{answer_marker[1]}."
+    sys_msg = "The following are grade school math word problems. Please, return your answer as a single number (without extra/special symbols) and nothing else."
     return sys_msg
 
 

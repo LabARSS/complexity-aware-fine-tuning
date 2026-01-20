@@ -10,7 +10,6 @@ from tqdm import tqdm
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
 from reasoning_fine_tune.entropy_estimation.logit_entropy import compute_entropy_from_logits
-from reasoning_fine_tune.prompts.gsm8k_cot_answer import answer_marker
 
 
 class EstimateDatasetConfig(PydraConfig):
@@ -58,6 +57,10 @@ def estimate_dataset(config: EstimateDatasetConfig):
         df[field_ans] = ""
 
     tokenizer = AutoTokenizer.from_pretrained(config.model_name)
+
+    if tokenizer.pad_token is None:
+        tokenizer.pad_token = tokenizer.eos_token
+
     model = AutoModelForCausalLM.from_pretrained(config.model_name, **config.model_config_dict).to(config.device)
 
     for index, row in tqdm(df.iterrows(), total=df.shape[0]):
@@ -99,54 +102,27 @@ def estimate_dataset(config: EstimateDatasetConfig):
         input_length = inputs.input_ids.shape[1]
         answer_raw = outputs.sequences[0, input_length:]
 
-        answer_token_map = []
-        answer = ""
-        for i, token in enumerate(answer_raw):
-            token_decoded = tokenizer.decode(token.unsqueeze(0), skip_special_tokens=True)
-            answer_token_map.extend([i] * len(token_decoded))
-            answer += token_decoded
-
-        answer_marker_start = answer.find(answer_marker[0])
-        answer_marker_end = answer.find(answer_marker[1])
-
-        extracted_answer_position = -1
-        extracted_answer = ""
-        if answer_marker_end != -1 and answer_marker_start != -1:
-            extracted_answer = answer[answer_marker_start + len(answer_marker[0]) : answer_marker_end]
-            extracted_answer_position = answer_marker_start + len(answer_marker[0])
+        answer = tokenizer.decode(answer_raw, skip_special_tokens=True).strip()
 
         if index < 5:
-            print(
-                f"Answer: {answer}\n\n\n"
-            )
-
-        if extracted_answer_position == -1:
-            invalid_answers += 1
-            continue
-
-        extracted_answer_position = answer_token_map[extracted_answer_position]
+            print(f"Answer raw: {answer}\n\n\n")
 
         # generated token position, batch_dim
-        final_token_logits = outputs.scores[extracted_answer_position][0]
+        final_token_logits = outputs.scores[-1][0]
         entropy = compute_entropy_from_logits(final_token_logits)
         df.at[index, field_entropy_value] = entropy
 
         if index < 5:
-            print(
-                f"Extracted answer: {extracted_answer}Answer position: {extracted_answer_position}/{len(outputs.scores)}\nExtracted answer token: {answer_raw[extracted_answer_position]} ({tokenizer.decode(answer_raw[extracted_answer_position].unsqueeze(0))})\nEntropy: {df.at[index, field_entropy_value]}\n\n\n"
-            )
+            print(f"Extracted answer: {answer}\nEntropy: {df.at[index, field_entropy_value]}\n\n\n")
 
         try:
-            df.at[index, field_ans] = extracted_answer
-            df.at[index, field_ans_correct] = config.check_answer_correct(df.iloc[index], extracted_answer)
+            df.at[index, field_ans] = answer
+            df.at[index, field_ans_correct] = config.check_answer_correct(df.iloc[index], answer)
         except Exception:
             invalid_answers += 1
 
         if index < 5:
-            print(
-                f"Correct: {df.at[index, field_ans_correct]}\n\n\n"
-            )
-
+            print(f"Correct: {df.at[index, field_ans_correct]}\n\n\n")
 
         if cast(int, index) % config.dump_every == 0:
             if file_type == ".jsonl":

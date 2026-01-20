@@ -26,8 +26,8 @@ class TrainConfig:
     eval_validation_period = 1
     eval_test_period: int | list[int] = 25
     eval_batch_size = 1
-    
-    train_sample_size: int | None = 3000 
+
+    train_sample_size: int | None = 3000
     val_sample_size: int | None = 1000
     test_sample_size: int | None = 1000
 
@@ -46,6 +46,8 @@ class TrainConfig:
     lora_alpha: int = 128
     lora_dropout: float = 0.05
 
+    dataset: str = "mmlu"  # medmcqa, mmlu, gsmk
+
     lora_target_modules: tuple[str, ...] = field(
         default_factory=lambda: (
             "q_proj",
@@ -57,7 +59,7 @@ class TrainConfig:
             "down_proj",
         )
     )
-    
+
     # model-specific prompt style (token wrappers)
     prompt_tokens: Dict[str, str] = field(
         default_factory=lambda: {
@@ -93,6 +95,17 @@ class TrainConfig:
                 "user_end": "<|im_end|>",
                 "assistant_start": "<|im_start|>assistant",
                 "assistant_end": "<|im_end|>",
+            }
+            return cfg
+        if name.endswith("Llama-3.2-3B-Instruct"):
+            cfg = TrainConfig(base_model=name)
+            cfg.prompt_tokens = {
+                "system_start": "<|start_header_id|>system<|end_header_id|>\n\n",
+                "system_end": "<|eot_id|>",
+                "user_start": "<|start_header_id|>user<|end_header_id|>\n\n",
+                "user_end": "<|eot_id|>",
+                "assistant_start": "<|start_header_id|>assistant<|end_header_id|>\n\n",
+                "assistant_end": "<|eot_id|>",
             }
             return cfg
         # default

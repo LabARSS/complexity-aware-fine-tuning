@@ -19,3 +19,30 @@ def check_answer_correct_gsm8k(row: pd.Series, model_answer: str):
         return row["answer"].lower() == model_answer.strip().lower()
     except Exception:
         return False
+
+
+def check_answer_correct_arc(row: pd.Series, model_answer: str):
+    assert isinstance(row["answerKey"], str)
+
+    try:
+        return row["answerKey"].lower() == model_answer.strip().lower()
+    except Exception:
+        return False
+
+
+def check_answer_correct_gpqa(row: pd.Series, model_answer: str):
+    assert isinstance(row["answer"], str)
+
+    try:
+        return row["answer"].lower() == model_answer.strip().lower()
+    except Exception:
+        return False
+
+
+def check_answer_correct_medmcqa(row: pd.Series, model_answer: str):
+    assert isinstance(row["answer"], str)
+
+    try:
+        return row["answer"].lower() == model_answer.strip().lower()
+    except Exception:
+        return False

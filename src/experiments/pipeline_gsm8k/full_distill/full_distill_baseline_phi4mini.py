@@ -5,17 +5,22 @@ from reasoning_fine_tune.training.sft.train import Trainer
 
 if __name__ == "__main__":
     cfg = TrainConfig.preset("microsoft/Phi-4-mini-instruct")
-    cfg.epochs = 10
+    cfg.epochs = 20
     cfg.debug = False
     cfg.use_cot = True
-    cfg.eval_validation_period = 2
+    cfg.eval_validation_period = 4
     cfg.eval_test_period = 0
     cfg.run_eval_on_start = False
-    cfg.max_input_length = 16384
-    cfg.max_new_tokens = 16384
-    cfg.batch_size = 2
-    cfg.eval_batch_size = 4
-    cfg.gradient_accumulation = 128
+    cfg.max_input_length = 8192
+    cfg.max_input_length_eval = 1024
+    cfg.max_new_tokens = 8192
+    cfg.batch_size = 4
+    cfg.eval_batch_size = 16
+    cfg.gradient_accumulation = 64
+    cfg.train_sample_size = None
+    cfg.val_sample_size = None
+    cfg.test_sample_size = None
+    cfg.dataset = "gsm8k"
 
     cfg.save_dir = str(
         Path(__file__).parent.joinpath("../../../../artifacts/pipeline_gsm8k/full_distill_baseline/phi4")

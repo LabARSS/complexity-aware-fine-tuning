@@ -3,7 +3,7 @@ from typing import Optional
 import torch
 
 ANSWER_MARKER = ["[[", "]]" ]
-ANSWER_PATTERN = re.compile(r'.*?\[\[\s*(\d+)\s*\]\].*?', re.DOTALL)
+ANSWER_PATTERN = re.compile(r'.*?\[\[\s*([0-9A-Za-z.,]+)\s*\]\].*?', re.DOTALL)
 
 
 def cot_sys_prompt(use_cot: bool, subject: Optional[str] = None, options=False) -> str:
